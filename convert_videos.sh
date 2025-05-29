@@ -36,13 +36,13 @@ log() {
 # Find all non-H.265 video files >= 1GB
 find_eligible_files() {
     find "$TARGET_DIR" -type f -size +1G \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.mov" -o -iname "*.avi" \) | while read -r file; do
-	log "Checking file $file"
+    log "Checking file $file"
         codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
                 -of default=noprint_wrappers=1:nokey=1 "$file")
-	# log "File codec is %codec"
+    # log "File codec is %codec"
         if [[ "$codec" != "hevc" ]]; then
             size=$(stat -c "%s" "$file")
-	    # log "File size is $size"
+        # log "File size is $size"
             echo "$size|$file"
         fi
     done | sort -nr | cut -d'|' -f2
@@ -68,25 +68,45 @@ convert_file() {
     validate_and_finalize "$input" "$temp_output" "$output"
 }
 
+abs() {
+  local n="$1"
+  echo $(( n < 0 ? -n : n ))
+}
+
+get_duration() {
+  local file="$1"
+  local duration
+
+  duration=$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
+    -of default=noprint_wrappers=1:nokey=1 "$file" 2>/dev/null | cut -d'.' -f1)
+
+  echo "${duration:-0}"
+}
+
+
 # Validate that source and temp output durations match
 validate_and_finalize() {
     local input="$1"
     local temp_output="$2"
     local final_output="$3"
-
-    src_duration=$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
-        -of default=noprint_wrappers=1:nokey=1 "$input" | cut -d'.' -f1)
-
-    out_duration=$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
-        -of default=noprint_wrappers=1:nokey=1 "$temp_output" | cut -d'.' -f1)
-
-    if [[ "$src_duration" == "$out_duration" ]]; then
+    
+    local src_duration=$(get_duration "$input")
+    local out_duration=$(get_duration "$temp_output")
+    
+    if [[ "$src_duration" -eq 0 || "$out_duration" -eq 0 ]]; then
+      log "❌ Could not determine duration for one of the files: src=$src_duration vs out=$out_duration"
+      # rm -f "$temp_output"
+      exit 1
+    fi
+    
+    local diff=$(abs $((src_duration - out_duration)))
+    if (( diff <= 1 )); then
         mv "$temp_output" "$final_output"
         rm -f "$input"
         log "✅ Successfully converted: $final_output"
     else
         # rm -f "$temp_output"
-        log "❌ Duration mismatch: $input vs $final_output. Conversion failed."
+        log "❌ Duration mismatch: src=$src_duration vs out=$out_duration for file $input"
         exit 1
     fi
 }
