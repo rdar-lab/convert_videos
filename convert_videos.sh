@@ -1,0 +1,108 @@
+#!/bin/bash
+set -euo pipefail
+
+LOG_TAG="convert_h265"
+
+LOG_FILE="/var/log/convert_files.log"
+DRY_RUN=false
+TARGET_DIR=""
+
+# Parse arguments
+if [[ "${1:-}" == "--dry-run" ]]; then
+    DRY_RUN=true
+    shift
+fi
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 [--dry-run] <directory>"
+    exit 1
+fi
+
+TARGET_DIR="$1"
+
+if [[ ! -d "$TARGET_DIR" ]]; then
+    log "Error: '$TARGET_DIR' is not a valid directory."
+    exit 1
+fi
+
+# Redirect all stdout and stderr to logger
+# exec > >(tee >(logger -t "$LOG_TAG")) 2>&1
+
+
+log() {
+    echo "$(date +'%Y-%m-%d %H:%M:%S') - $*" >&2
+}
+
+# Find all non-H.265 video files >= 1GB
+find_eligible_files() {
+    find "$TARGET_DIR" -type f -size +1G \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.mov" -o -iname "*.avi" \) | while read -r file; do
+	log "Checking file $file"
+        codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
+                -of default=noprint_wrappers=1:nokey=1 "$file")
+	# log "File codec is %codec"
+        if [[ "$codec" != "hevc" ]]; then
+            size=$(stat -c "%s" "$file")
+	    # log "File size is $size"
+            echo "$size|$file"
+        fi
+    done | sort -nr | cut -d'|' -f2
+}
+
+# Run HandBrake conversion with nice
+convert_file() {
+    local input="$1"
+    local output="${input%.*} - New.mkv"
+    local temp_output="${output}.temp"
+
+    log "Starting conversion: $input"
+    
+    if $DRY_RUN; then
+        log "[Dry Run] Would convert: $input -> $output"
+        return 0
+    fi
+
+    nice -n 10 HandBrakeCLI -i "$input" -o "$temp_output" \
+        -e x265 --encoder-preset medium --encoder-profile main10 \
+        -q 24 -f mkv --audio 1 --aencoder copy --format av_mkv
+
+    validate_and_finalize "$input" "$temp_output" "$output"
+}
+
+# Validate that source and temp output durations match
+validate_and_finalize() {
+    local input="$1"
+    local temp_output="$2"
+    local final_output="$3"
+
+    src_duration=$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
+        -of default=noprint_wrappers=1:nokey=1 "$input" | cut -d'.' -f1)
+
+    out_duration=$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
+        -of default=noprint_wrappers=1:nokey=1 "$temp_output" | cut -d'.' -f1)
+
+    if [[ "$src_duration" == "$out_duration" ]]; then
+        mv "$temp_output" "$final_output"
+        rm -f "$input"
+        log "✅ Successfully converted: $final_output"
+    else
+        # rm -f "$temp_output"
+        log "❌ Duration mismatch: $input vs $final_output. Conversion failed."
+        exit 1
+    fi
+}
+
+# Main loop
+main() {
+    log "Starting scan in $TARGET_DIR"
+    files=$(find_eligible_files)
+    if [[ -z "$files" ]]; then
+        log "No eligible files found."
+        exit 0
+    fi
+
+    while IFS= read -r file; do
+        convert_file "$file"
+    done <<< "$files"
+}
+
+main "$@"
