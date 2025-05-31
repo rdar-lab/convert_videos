@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap 'log "❌ Script failed at line $LINENO with exit code $?"' ERR
 
 LOG_TAG="convert_h265"
 
@@ -36,9 +37,9 @@ log() {
 # Find all non-H.265 video files >= 1GB
 find_eligible_files() {
     find "$TARGET_DIR" -type f -size +1G \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.mov" -o -iname "*.avi" \) | while read -r file; do
-    log "Checking file $file"
-        codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
-                -of default=noprint_wrappers=1:nokey=1 "$file")
+    # log "Checking file $file"
+    codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
+            -of default=noprint_wrappers=1:nokey=1 "$file")
     # log "File codec is %codec"
         if [[ "$codec" != "hevc" ]]; then
             size=$(stat -c "%s" "$file")
@@ -69,18 +70,18 @@ convert_file() {
 }
 
 abs() {
-  local n="$1"
-  echo $(( n < 0 ? -n : n ))
+    local n="$1"
+    echo $(( n < 0 ? -n : n ))
 }
 
 get_duration() {
-  local file="$1"
-  local duration
+    local file="$1"
+    local duration
 
-  duration=$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
-    -of default=noprint_wrappers=1:nokey=1 "$file" 2>/dev/null | cut -d'.' -f1)
+    duration=$(ffprobe -v error -select_streams v:0 -show_entries format=duration \
+        -of default=noprint_wrappers=1:nokey=1 "$file" 2>/dev/null | cut -d'.' -f1)
 
-  echo "${duration:-0}"
+    echo "${duration:-0}"
 }
 
 
@@ -114,15 +115,22 @@ validate_and_finalize() {
 # Main loop
 main() {
     log "Starting scan in $TARGET_DIR"
-    files=$(find_eligible_files)
-    if [[ -z "$files" ]]; then
+
+    mapfile -t files < <(find_eligible_files)
+
+    if [[ ${#files[@]} -eq 0 ]]; then
         log "No eligible files found."
         exit 0
     fi
+    
+    log "Files to convert:"
+    for file in "${files[@]}"; do
+        log "$file"
+    done
 
-    while IFS= read -r file; do
+    for file in "${files[@]}"; do
         convert_file "$file"
-    done <<< "$files"
+    done
 }
 
 main "$@"
