@@ -36,7 +36,7 @@ log() {
 
 # Find all non-H.265 video files >= 1GB
 find_eligible_files() {
-    find "$TARGET_DIR" -type f -size +1G \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.mov" -o -iname "*.avi" \) | while read -r file; do
+    find -L "$TARGET_DIR" -type f -size +1G \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.mov" -o -iname "*.avi" \) | while read -r file; do
     # log "Checking file $file"
     codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name \
             -of default=noprint_wrappers=1:nokey=1 "$file")
