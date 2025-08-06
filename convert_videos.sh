@@ -107,7 +107,7 @@ validate_and_finalize() {
         log "✅ Successfully converted: $final_output"
     else
         mv "$temp_output" "$final_output"
-		mv "$input" "$input.fail"
+		mv "$input" "${input}.fail"
         log "❌ Duration mismatch: src=$src_duration vs out=$out_duration for file $input"
     fi
 }
