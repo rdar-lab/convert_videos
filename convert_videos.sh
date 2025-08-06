@@ -106,9 +106,9 @@ validate_and_finalize() {
         rm -f "$input"
         log "✅ Successfully converted: $final_output"
     else
-        # rm -f "$temp_output"
+        mv "$temp_output" "$final_output"
+		mv "$input" "$input.fail"
         log "❌ Duration mismatch: src=$src_duration vs out=$out_duration for file $input"
-        exit 1
     fi
 }
 
