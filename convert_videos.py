@@ -148,9 +148,10 @@ def convert_file(input_path, dry_run=False):
         
         # Run with lower priority on Windows and Linux
         if sys.platform == 'win32':
-            # Windows: Use CREATE_BELOW_NORMAL_PRIORITY_CLASS
+            # Windows: Use BELOW_NORMAL_PRIORITY_CLASS (0x00004000)
+            BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
             subprocess.run(cmd, check=True, 
-                          creationflags=subprocess.BELOW_NORMAL_PRIORITY_CLASS)
+                          creationflags=BELOW_NORMAL_PRIORITY_CLASS)
         else:
             # Linux/Unix: Use nice
             subprocess.run(['nice', '-n', '10'] + cmd, check=True)
