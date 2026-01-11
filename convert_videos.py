@@ -142,8 +142,7 @@ def convert_file(input_path, dry_run=False):
             '-q', '24',
             '-f', 'mkv',
             '--audio', '1',
-            '--aencoder', 'copy',
-            '--format', 'av_mkv'
+            '--aencoder', 'copy'
         ]
         
         # Run with lower priority on Windows and Linux
@@ -153,8 +152,12 @@ def convert_file(input_path, dry_run=False):
             subprocess.run(cmd, check=True, 
                           creationflags=BELOW_NORMAL_PRIORITY_CLASS)
         else:
-            # Linux/Unix: Use nice
-            subprocess.run(['nice', '-n', '10'] + cmd, check=True)
+            # Linux/Unix: Try to use nice if available, otherwise run without it
+            try:
+                subprocess.run(['nice', '-n', '10'] + cmd, check=True)
+            except FileNotFoundError:
+                # nice not available, run without it
+                subprocess.run(cmd, check=True)
         
         # Validate and finalize
         return validate_and_finalize(input_path, temp_output, output_path)
@@ -187,9 +190,20 @@ def validate_and_finalize(input_path, temp_output, final_output):
     else:
         # Duration mismatch - keep both files but mark original as failed
         temp_output.rename(final_output)
+        
+        # Create unique .fail filename if one already exists
         failed_path = input_path.with_suffix(input_path.suffix + '.fail')
-        input_path.rename(failed_path)
-        logger.error(f"❌ Duration mismatch: src={src_duration} vs out={out_duration} for file {input_path}")
+        counter = 1
+        while failed_path.exists():
+            failed_path = input_path.with_suffix(f"{input_path.suffix}.fail.{counter}")
+            counter += 1
+        
+        try:
+            input_path.rename(failed_path)
+            logger.error(f"❌ Duration mismatch: src={src_duration} vs out={out_duration} for file {input_path}")
+        except Exception as e:
+            logger.error(f"❌ Failed to rename original file: {e}")
+        
         return False
 
 
