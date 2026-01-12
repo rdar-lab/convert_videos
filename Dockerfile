@@ -6,7 +6,7 @@ RUN find /etc/apt/sources.list.d/ -type f -exec sed -i 's|http://archive.ubuntu.
 
 RUN apt-get update 
 RUN apt-get upgrade -y 
-RUN apt-get install -y software-properties-common ffmpeg procps
+RUN apt-get install -y software-properties-common ffmpeg procps python3 python3-pip
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -26,10 +26,13 @@ RUN apt install -y curl
 
 RUN apt-get install -y handbrake-cli
 
-COPY convert_videos.sh /usr/local/bin/convert_videos.sh
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+
+COPY convert_videos.py /usr/local/bin/convert_videos.py
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
-RUN chmod +x /usr/local/bin/convert_videos.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/convert_videos.py /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 

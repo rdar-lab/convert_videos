@@ -13,15 +13,16 @@ done
 # Directory to process - default is /data or first argument if not --dry-run
 TARGET_DIR=${1:-/data}
 
+# Build command with appropriate flags
+CMD="python3 /usr/local/bin/convert_videos.py"
+
 if $DRY_RUN; then
     echo "Running in dry-run mode: no actual conversion will be done."
+    CMD="$CMD --dry-run"
 fi
 
-while true; do
-    if $DRY_RUN; then
-        /usr/local/bin/convert_videos.sh --dry-run "$TARGET_DIR"
-    else
-        /usr/local/bin/convert_videos.sh "$TARGET_DIR"
-    fi
-    sleep 3600
-done
+# Always run in loop mode for Docker
+CMD="$CMD --loop $TARGET_DIR"
+
+# Execute the command
+exec $CMD
