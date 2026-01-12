@@ -39,6 +39,7 @@ SIZE_MULTIPLIERS = {
     'GB': 1024 ** 3
 }
 DEFAULT_MIN_FILE_SIZE_BYTES = 1024 ** 3  # 1GB
+FILE_SIZE_PATTERN = re.compile(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$')
 
 
 def parse_file_size(size_str):
@@ -49,7 +50,7 @@ def parse_file_size(size_str):
     size_str = str(size_str).strip().upper()
     
     # Match number and optional unit
-    match = re.match(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$', size_str)
+    match = FILE_SIZE_PATTERN.match(size_str)
     if not match:
         raise ValueError(f"Invalid file size format: {size_str}")
     
@@ -380,7 +381,7 @@ Examples:
         """
     )
     parser.add_argument('directory', 
-                       nargs='?',
+                       nargs='?',  # Optional to allow config-only usage
                        help='Directory to scan for video files')
     parser.add_argument('--config',
                        help='Path to configuration file (default: config.yaml)')
@@ -417,6 +418,12 @@ Examples:
     
     # Get output configuration
     output_config = config.get('output', {})
+    
+    # Validate encoder type early
+    encoder_type = output_config.get('encoder', 'x265_10bit')
+    if encoder_type not in SUPPORTED_ENCODERS:
+        logger.error(f"Unsupported encoder type in config: '{encoder_type}'. Supported encoders: {', '.join(SUPPORTED_ENCODERS)}")
+        sys.exit(1)
     
     # Validate directory
     if not target_directory:
