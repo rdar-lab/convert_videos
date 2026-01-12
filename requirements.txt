@@ -1,0 +1,4 @@
+# Python standard library only - no external dependencies required
+# However, the following system tools must be installed:
+# - ffmpeg (provides ffprobe)
+# - HandBrakeCLI
