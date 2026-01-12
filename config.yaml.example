@@ -5,9 +5,10 @@
 # Can be overridden by command line argument
 directory: "/path/to/videos"
 
-# Minimum file size threshold (in bytes)
-# Default: 1073741824 (1GB)
-# You can use human-readable formats: "1GB", "500MB", "2GB", etc.
+# Minimum file size threshold
+# Can be specified as human-readable format (e.g., "1GB", "500MB", "2GB")
+# or as raw bytes (e.g., 1073741824)
+# Default: 1073741824 bytes (1GB)
 min_file_size: "1GB"
 
 # Output format and encoder settings

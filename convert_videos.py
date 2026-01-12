@@ -82,7 +82,7 @@ def load_config(config_path=None):
         return default_config
     
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             user_config = yaml.safe_load(f) or {}
         
         # Merge with defaults
@@ -213,6 +213,12 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     encoder_preset = output_config.get('preset', 'medium')
     quality = output_config.get('quality', 24)
     
+    # Validate encoder type early
+    supported_encoders = ['x265', 'x265_10bit', 'nvenc_hevc']
+    if encoder_type not in supported_encoders:
+        logger.error(f"Unsupported encoder type: {encoder_type}. Supported: {', '.join(supported_encoders)}")
+        return False
+    
     # Avoid collisions with existing output or temp files
     base_name = f"{input_path.stem} - New"
     output_path = input_path.with_name(f"{base_name}.{output_format}")
@@ -262,8 +268,8 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
                 '--encoder-profile', 'main10',
                 '-q', str(quality)
             ])
-        else:  # x265 (8-bit)
-            # Standard x265 encoding
+        elif encoder_type == 'x265':
+            # Standard x265 encoding (8-bit)
             cmd.extend([
                 '-e', 'x265',
                 '--encoder-preset', encoder_preset,
