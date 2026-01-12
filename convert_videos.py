@@ -33,7 +33,12 @@ logger = logging.getLogger(__name__)
 # Constants
 SUPPORTED_ENCODERS = ['x265', 'x265_10bit', 'nvenc_hevc']
 SUPPORTED_FORMATS = ['mkv', 'mp4']
-SUPPORTED_PRESETS = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
+# x265 CPU encoder presets
+X265_PRESETS = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
+# NVENC GPU encoder presets (HandBrake-compatible)
+NVENC_PRESETS = ['default', 'slow', 'medium', 'fast']
+# All supported presets (combined)
+SUPPORTED_PRESETS = X265_PRESETS + NVENC_PRESETS
 SIZE_MULTIPLIERS = {
     'B': 1,
     'KB': 1024,
@@ -66,6 +71,49 @@ def validate_quality(quality):
         return 0 <= quality_int <= 51
     except (TypeError, ValueError):
         return False
+
+
+def map_preset_for_encoder(preset, encoder_type):
+    """Map x265-style presets to encoder-specific presets when needed.
+    
+    For x265/x265_10bit: returns the preset as-is if valid
+    For nvenc_hevc: maps x265 presets to NVENC equivalents, or returns NVENC preset as-is
+    """
+    if encoder_type in ['x265', 'x265_10bit']:
+        # x265 encoders use their own preset names
+        if preset in X265_PRESETS:
+            return preset
+        # If using an NVENC preset with x265, map to closest equivalent
+        nvenc_to_x265_map = {
+            'default': 'medium',
+            'slow': 'slow',
+            'medium': 'medium',
+            'fast': 'fast'
+        }
+        return nvenc_to_x265_map.get(preset, 'medium')
+    
+    elif encoder_type == 'nvenc_hevc':
+        # NVENC encoder: map x265 presets to NVENC equivalents
+        if preset in NVENC_PRESETS:
+            # Already an NVENC preset
+            return preset
+        
+        # Map x265 presets to NVENC presets
+        x265_to_nvenc_map = {
+            'ultrafast': 'fast',
+            'superfast': 'fast',
+            'veryfast': 'fast',
+            'faster': 'fast',
+            'fast': 'fast',
+            'medium': 'medium',
+            'slow': 'slow',
+            'slower': 'slow',
+            'veryslow': 'slow'
+        }
+        return x265_to_nvenc_map.get(preset, 'medium')
+    
+    return preset
+
 
 
 def parse_file_size(size_str):
@@ -287,6 +335,11 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         logger.error(f"Invalid quality value: {quality!r}. Must be an integer between 0 and 51.")
         return False
     
+    # Map preset to encoder-specific preset
+    effective_preset = map_preset_for_encoder(encoder_preset, encoder_type)
+    if effective_preset != encoder_preset:
+        logger.info(f"Mapped preset '{encoder_preset}' to '{effective_preset}' for encoder '{encoder_type}'")
+    
     # Avoid collisions with existing output or temp files
     base_name = f"{input_path.stem} - New"
     output_path = input_path.with_name(f"{base_name}.{output_format}")
@@ -325,14 +378,14 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
             # NVIDIA GPU acceleration
             cmd.extend([
                 '-e', 'nvenc_h265',
-                '--encoder-preset', encoder_preset,
+                '--encoder-preset', effective_preset,
                 '-q', str(quality)
             ])
         elif encoder_type == 'x265_10bit':
             # x265 with 10-bit color depth
             cmd.extend([
                 '-e', 'x265',
-                '--encoder-preset', encoder_preset,
+                '--encoder-preset', effective_preset,
                 '--encoder-profile', 'main10',
                 '-q', str(quality)
             ])
@@ -340,7 +393,7 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
             # Standard x265 encoding (8-bit)
             cmd.extend([
                 '-e', 'x265',
-                '--encoder-preset', encoder_preset,
+                '--encoder-preset', effective_preset,
                 '-q', str(quality)
             ])
         

@@ -22,13 +22,18 @@ output:
   # nvenc_hevc: NVIDIA GPU-accelerated H.265 encoding (requires NVIDIA GPU)
   encoder: "x265_10bit"
   
-  # Encoder preset: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
-  # Faster presets = faster encoding but larger files
-  # Slower presets = slower encoding but smaller files
+  # Encoder preset:
+  # For x265/x265_10bit: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+  #   - Faster presets = faster encoding but larger files
+  #   - Slower presets = slower encoding but smaller files
+  # For nvenc_hevc: default, fast, medium, slow
+  #   - Note: x265 preset names will be automatically mapped to NVENC equivalents
   preset: "medium"
   
   # Quality setting (lower = better quality but larger file)
-  # Range: 0-51 for x265, recommended: 20-28
+  # For x265/x265_10bit: Range 0-51 (CRF), recommended: 20-28
+  # For nvenc_hevc: Range 0-51 (CQ), recommended: 20-28
+  #   - Both encoders use similar quality scales, though results may differ
   quality: 24
 
 # Preserve original files after successful conversion
