@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 # Constants
 SUPPORTED_ENCODERS = ['x265', 'x265_10bit', 'nvenc_hevc']
+SUPPORTED_FORMATS = ['mkv', 'mp4']
+SUPPORTED_PRESETS = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
 SIZE_MULTIPLIERS = {
     'B': 1,
     'KB': 1024,
@@ -39,7 +41,7 @@ SIZE_MULTIPLIERS = {
     'GB': 1024 ** 3
 }
 DEFAULT_MIN_FILE_SIZE_BYTES = 1024 ** 3  # 1GB
-FILE_SIZE_PATTERN = re.compile(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$')
+FILE_SIZE_PATTERN = re.compile(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$', re.IGNORECASE)
 
 
 def validate_encoder(encoder_type):
@@ -47,6 +49,29 @@ def validate_encoder(encoder_type):
     if encoder_type not in SUPPORTED_ENCODERS:
         return False
     return True
+
+
+def validate_format(format_type):
+    """Validate that the output format is supported."""
+    if format_type not in SUPPORTED_FORMATS:
+        return False
+    return True
+
+
+def validate_preset(preset):
+    """Validate that the encoder preset is supported."""
+    if preset not in SUPPORTED_PRESETS:
+        return False
+    return True
+
+
+def validate_quality(quality):
+    """Validate that the quality value is in the valid range (0-51)."""
+    try:
+        quality_int = int(quality)
+        return 0 <= quality_int <= 51
+    except (TypeError, ValueError):
+        return False
 
 
 def parse_file_size(size_str):
@@ -105,13 +130,21 @@ def load_config(config_path=None):
         # Merge with defaults
         config = {**default_config, **user_config}
         
-        # Merge output settings if present
-        if 'output' in user_config and user_config['output'] is not None:
-            config['output'] = {**default_config['output'], **user_config['output']}
+        # Merge output settings if present, handling None and type safety
+        if 'output' in user_config:
+            if user_config['output'] is None:
+                # User explicitly set output: null; restore default nested output config
+                config['output'] = default_config['output']
+            elif isinstance(user_config['output'], dict):
+                # Merge user-provided output settings into the default output config
+                config['output'] = {**default_config['output'], **user_config['output']}
+            else:
+                # Invalid output type; fall back to defaults to avoid runtime errors
+                config['output'] = default_config['output']
         
         logger.info(f"Loaded configuration from {config_path}")
         return config
-    except Exception as e:
+    except (OSError, IOError, yaml.YAMLError) as e:
         logger.error(f"Error loading config file {config_path}: {e}")
         return default_config
 
@@ -176,7 +209,12 @@ def get_duration(file_path):
 
 
 def find_eligible_files(target_dir, min_size_bytes=None):
-    """Find all video files >= min_size_bytes that are not H.265 encoded."""
+    """Find all video files >= min_size_bytes that are not H.265 encoded.
+    
+    Args:
+        target_dir: Directory to scan for video files
+        min_size_bytes: Minimum file size threshold in bytes (default: 1GB)
+    """
     video_extensions = ['.mp4', '.mkv', '.mov', '.avi']
     if min_size_bytes is None:
         min_size_bytes = DEFAULT_MIN_FILE_SIZE_BYTES
@@ -213,7 +251,12 @@ def find_eligible_files(target_dir, min_size_bytes=None):
 
 
 def convert_file(input_path, dry_run=False, preserve_original=False, output_config=None):
-    """Convert a video file to H.265 using HandBrakeCLI."""
+    """Convert a video file using HandBrakeCLI with a configurable encoder.
+    
+    By default, uses an H.265 (HEVC) encoder, but the encoder, container
+    format, preset, and quality can be customized via the output_config
+    parameter (e.g., CPU x265 or GPU-accelerated nvenc_hevc).
+    """
     input_path = Path(input_path)
     
     # Default output configuration
@@ -230,9 +273,28 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     encoder_preset = output_config.get('preset', 'medium')
     quality = output_config.get('quality', 24)
     
-    # Validate encoder type early
+    # Validate output format
+    if not validate_format(output_format):
+        logger.error(f"Unsupported output format: {output_format}. Supported: {', '.join(SUPPORTED_FORMATS)}")
+        return False
+    
+    # Validate encoder type
     if not validate_encoder(encoder_type):
         logger.error(f"Unsupported encoder type: {encoder_type}. Supported: {', '.join(SUPPORTED_ENCODERS)}")
+        return False
+    
+    # Validate encoder preset
+    if not validate_preset(encoder_preset):
+        logger.error(f"Unsupported encoder preset: {encoder_preset}. Supported: {', '.join(SUPPORTED_PRESETS)}")
+        return False
+    
+    # Validate quality parameter
+    if not validate_quality(quality):
+        try:
+            quality_int = int(quality)
+            logger.error(f"Invalid quality value: {quality_int}. Must be between 0 and 51.")
+        except (TypeError, ValueError):
+            logger.error(f"Invalid quality value: {quality!r}. Must be an integer between 0 and 51.")
         return False
     
     # Avoid collisions with existing output or temp files
@@ -392,7 +454,7 @@ Examples:
     )
     parser.add_argument('directory', 
                        nargs='?',  # Optional to allow config-only usage
-                       help='Directory to scan for video files')
+                       help='Directory to scan for video files (optional; can be set in config file)')
     parser.add_argument('--config',
                        help='Path to configuration file (default: config.yaml)')
     parser.add_argument('--dry-run', 
