@@ -52,6 +52,8 @@ def validate_encoder(encoder_type):
 def parse_file_size(size_str):
     """Parse file size string (e.g., '1GB', '500MB') to bytes."""
     if isinstance(size_str, int):
+        if size_str < 0:
+            raise ValueError(f"File size must be non-negative: {size_str}")
         return size_str
     
     size_str = str(size_str).strip().upper()
@@ -96,7 +98,8 @@ def load_config(config_path=None):
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             user_config = yaml.safe_load(f)
-            if user_config is None:
+            # Handle None, False, or other falsy/invalid values
+            if not isinstance(user_config, dict):
                 user_config = {}
         
         # Merge with defaults
