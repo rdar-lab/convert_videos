@@ -30,6 +30,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Constants
+SUPPORTED_ENCODERS = ['x265', 'x265_10bit', 'nvenc_hevc']
+SIZE_MULTIPLIERS = {
+    'B': 1,
+    'KB': 1024,
+    'MB': 1024 ** 2,
+    'GB': 1024 ** 3
+}
+DEFAULT_MIN_FILE_SIZE_BYTES = 1024 ** 3  # 1GB
+
+
 def parse_file_size(size_str):
     """Parse file size string (e.g., '1GB', '500MB') to bytes."""
     if isinstance(size_str, int):
@@ -45,14 +56,7 @@ def parse_file_size(size_str):
     number = float(match.group(1))
     unit = match.group(2) or 'B'
     
-    multipliers = {
-        'B': 1,
-        'KB': 1024,
-        'MB': 1024 ** 2,
-        'GB': 1024 ** 3
-    }
-    
-    return int(number * multipliers[unit])
+    return int(number * SIZE_MULTIPLIERS[unit])
 
 
 def load_config(config_path=None):
@@ -83,7 +87,9 @@ def load_config(config_path=None):
     
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
-            user_config = yaml.safe_load(f) or {}
+            user_config = yaml.safe_load(f)
+            if user_config is None:
+                user_config = {}
         
         # Merge with defaults
         config = {**default_config, **user_config}
@@ -162,7 +168,7 @@ def find_eligible_files(target_dir, min_size_bytes=None):
     """Find all video files >= min_size_bytes that are not H.265 encoded."""
     video_extensions = ['.mp4', '.mkv', '.mov', '.avi']
     if min_size_bytes is None:
-        min_size_bytes = 1 * 1024 * 1024 * 1024  # 1GB in bytes
+        min_size_bytes = DEFAULT_MIN_FILE_SIZE_BYTES
     
     eligible_files = []
     target_path = Path(target_dir)
@@ -214,9 +220,8 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     quality = output_config.get('quality', 24)
     
     # Validate encoder type early
-    supported_encoders = ['x265', 'x265_10bit', 'nvenc_hevc']
-    if encoder_type not in supported_encoders:
-        logger.error(f"Unsupported encoder type: {encoder_type}. Supported: {', '.join(supported_encoders)}")
+    if encoder_type not in SUPPORTED_ENCODERS:
+        logger.error(f"Unsupported encoder type: {encoder_type}. Supported: {', '.join(SUPPORTED_ENCODERS)}")
         return False
     
     # Avoid collisions with existing output or temp files
