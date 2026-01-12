@@ -25,7 +25,8 @@ if $DRY_RUN; then
 fi
 
 # Always run in loop mode for Docker
-CMD_ARGS+=('--loop' "$TARGET_DIR")
+CMD_ARGS+=('--loop')
+CMD_ARGS+=("$TARGET_DIR")
 
 # Execute the command
 exec "${CMD_ARGS[@]}"
