@@ -7,6 +7,50 @@ Benefits:
 1. Hardware-accelerated playback support
 2. Significant storage savings (typically 40-60% smaller files)
 3. Works on Windows, Linux, and macOS
+4. Configurable via YAML configuration file or command line arguments
+
+## Configuration
+
+You can configure the tool using a YAML configuration file. Copy `config.yaml.example` to `config.yaml` and customize:
+
+```yaml
+# Directory to scan for video files
+directory: "/path/to/videos"
+
+# Minimum file size threshold (supports human-readable formats)
+min_file_size: "1GB"  # Can be "500MB", "2GB", etc.
+
+# Output format and encoder settings
+output:
+  format: "mkv"  # Output container: mkv or mp4
+  encoder: "x265_10bit"  # Options: x265, x265_10bit, nvenc_hevc
+  preset: "medium"  # Speed vs quality tradeoff
+  quality: 24  # Lower = better quality, larger file (range: 0-51)
+
+# Other options
+preserve_original: false  # Keep original files after conversion
+loop: false  # Run continuously (scan every hour)
+dry_run: false  # Show what would be converted without converting
+```
+
+### Encoder Options
+
+- **x265**: Standard H.265 8-bit encoding (CPU)
+- **x265_10bit**: H.265 10-bit encoding (CPU, better quality) - **Default**
+- **nvenc_hevc**: NVIDIA GPU-accelerated H.265 encoding (requires NVIDIA GPU with NVENC support)
+
+### Using Configuration File
+
+```bash
+# Use config.yaml in current directory
+python convert_videos.py
+
+# Specify a custom config file
+python convert_videos.py --config /path/to/config.yaml
+
+# Command line arguments override config file settings
+python convert_videos.py --config config.yaml --dry-run /custom/path
+```
 
 ## Installation & Usage
 
@@ -17,6 +61,9 @@ See **[WINDOWS_INSTALL.md](WINDOWS_INSTALL.md)** for detailed Windows installati
 **Quick Start:**
 ```cmd
 # Install dependencies: Python 3, FFmpeg, HandBrakeCLI
+# Install Python dependencies:
+pip install -r requirements.txt
+
 # Then run:
 python convert_videos.py "C:\Path\To\Videos"
 
@@ -28,6 +75,9 @@ python convert_videos.py --dry-run "C:\Path\To\Videos"
 
 # Keep original files after conversion:
 python convert_videos.py --preserve-original "C:\Path\To\Videos"
+
+# Use a configuration file:
+python convert_videos.py --config config.yaml
 ```
 
 ### Linux/macOS (Without Docker)
@@ -35,10 +85,14 @@ python convert_videos.py --preserve-original "C:\Path\To\Videos"
 **Install dependencies:**
 ```bash
 # Ubuntu/Debian
-sudo apt-get install python3 ffmpeg handbrake-cli
+sudo apt-get install python3 python3-pip ffmpeg handbrake-cli
+
+# Install Python dependencies
+pip3 install -r requirements.txt
 
 # macOS (using Homebrew)
 brew install python3 ffmpeg handbrake
+pip3 install -r requirements.txt
 ```
 
 **Run the script:**

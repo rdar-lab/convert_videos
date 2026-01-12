@@ -17,6 +17,8 @@ import argparse
 import logging
 from pathlib import Path
 import time
+import yaml
+import re
 
 
 # Configure logging
@@ -26,6 +28,75 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+
+def parse_file_size(size_str):
+    """Parse file size string (e.g., '1GB', '500MB') to bytes."""
+    if isinstance(size_str, int):
+        return size_str
+    
+    size_str = str(size_str).strip().upper()
+    
+    # Match number and optional unit
+    match = re.match(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$', size_str)
+    if not match:
+        raise ValueError(f"Invalid file size format: {size_str}")
+    
+    number = float(match.group(1))
+    unit = match.group(2) or 'B'
+    
+    multipliers = {
+        'B': 1,
+        'KB': 1024,
+        'MB': 1024 ** 2,
+        'GB': 1024 ** 3
+    }
+    
+    return int(number * multipliers[unit])
+
+
+def load_config(config_path=None):
+    """Load configuration from YAML file."""
+    default_config = {
+        'directory': None,
+        'min_file_size': '1GB',
+        'output': {
+            'format': 'mkv',
+            'encoder': 'x265_10bit',
+            'preset': 'medium',
+            'quality': 24
+        },
+        'preserve_original': False,
+        'loop': False,
+        'dry_run': False
+    }
+    
+    if config_path is None:
+        # Look for config.yaml in current directory
+        config_path = Path('config.yaml')
+    else:
+        config_path = Path(config_path)
+    
+    if not config_path.exists():
+        logger.debug(f"Config file not found: {config_path}, using defaults")
+        return default_config
+    
+    try:
+        with open(config_path, 'r') as f:
+            user_config = yaml.safe_load(f) or {}
+        
+        # Merge with defaults
+        config = {**default_config, **user_config}
+        
+        # Merge output settings
+        if 'output' in user_config:
+            config['output'] = {**default_config['output'], **user_config['output']}
+        
+        logger.info(f"Loaded configuration from {config_path}")
+        return config
+    except Exception as e:
+        logger.error(f"Error loading config file {config_path}: {e}")
+        return default_config
 
 
 def check_dependencies():
@@ -87,15 +158,17 @@ def get_duration(file_path):
         return 0
 
 
-def find_eligible_files(target_dir):
-    """Find all video files >= 1GB that are not H.265 encoded."""
+def find_eligible_files(target_dir, min_size_bytes=None):
+    """Find all video files >= min_size_bytes that are not H.265 encoded."""
     video_extensions = ['.mp4', '.mkv', '.mov', '.avi']
-    min_size = 1 * 1024 * 1024 * 1024  # 1GB in bytes
+    if min_size_bytes is None:
+        min_size_bytes = 1 * 1024 * 1024 * 1024  # 1GB in bytes
     
     eligible_files = []
     target_path = Path(target_dir)
     
     logger.info(f"Scanning directory: {target_dir}")
+    logger.info(f"Minimum file size: {min_size_bytes / (1024**3):.2f} GB")
     
     for ext in video_extensions:
         for file_path in target_path.rglob(f'*{ext}'):
@@ -107,7 +180,7 @@ def find_eligible_files(target_dir):
                 
                 # Check file size
                 file_size = file_path.stat().st_size
-                if file_size < min_size:
+                if file_size < min_size_bytes:
                     continue
                 
                 # Check codec
@@ -122,45 +195,80 @@ def find_eligible_files(target_dir):
     return [f[1] for f in eligible_files]
 
 
-def convert_file(input_path, dry_run=False, preserve_original=False):
+def convert_file(input_path, dry_run=False, preserve_original=False, output_config=None):
     """Convert a video file to H.265 using HandBrakeCLI."""
     input_path = Path(input_path)
     
+    # Default output configuration
+    if output_config is None:
+        output_config = {
+            'format': 'mkv',
+            'encoder': 'x265_10bit',
+            'preset': 'medium',
+            'quality': 24
+        }
+    
+    output_format = output_config.get('format', 'mkv')
+    encoder_type = output_config.get('encoder', 'x265_10bit')
+    encoder_preset = output_config.get('preset', 'medium')
+    quality = output_config.get('quality', 24)
+    
     # Avoid collisions with existing output or temp files
     base_name = f"{input_path.stem} - New"
-    output_path = input_path.with_name(f"{base_name}.mkv")
-    temp_output = output_path.with_suffix('.mkv.temp')
+    output_path = input_path.with_name(f"{base_name}.{output_format}")
+    temp_output = output_path.with_suffix(f'.{output_format}.temp')
     
     if output_path.exists() or temp_output.exists():
         counter = 1
         while True:
-            output_path = input_path.with_name(f"{base_name} ({counter}).mkv")
-            temp_output = output_path.with_suffix('.mkv.temp')
+            output_path = input_path.with_name(f"{base_name} ({counter}).{output_format}")
+            temp_output = output_path.with_suffix(f'.{output_format}.temp')
             if not output_path.exists() and not temp_output.exists():
                 break
             counter += 1
     
     logger.info(f"Starting conversion: {input_path}")
+    logger.info(f"Encoder: {encoder_type}, Preset: {encoder_preset}, Quality: {quality}, Format: {output_format}")
     
     if dry_run:
         logger.info(f"[Dry Run] Would convert: {input_path} -> {output_path}")
         return True
     
     try:
-        # Run HandBrakeCLI with appropriate settings
+        # Build HandBrakeCLI command based on encoder type
         cmd = [
             'HandBrakeCLI',
             '-i', str(input_path),
             '-o', str(temp_output),
-            '-e', 'x265',
-            '--encoder-preset', 'medium',
-            '--encoder-profile', 'main10',
-            '-q', '24',
-            '-f', 'mkv',
+            '-f', output_format,
             '--all-audio',
             '--aencoder', 'copy',
             '--all-subtitles'
         ]
+        
+        # Configure encoder based on type
+        if encoder_type == 'nvenc_hevc':
+            # NVIDIA GPU acceleration
+            cmd.extend([
+                '-e', 'nvenc_h265',
+                '--encoder-preset', encoder_preset,
+                '-q', str(quality)
+            ])
+        elif encoder_type == 'x265_10bit':
+            # x265 with 10-bit color depth
+            cmd.extend([
+                '-e', 'x265',
+                '--encoder-preset', encoder_preset,
+                '--encoder-profile', 'main10',
+                '-q', str(quality)
+            ])
+        else:  # x265 (8-bit)
+            # Standard x265 encoding
+            cmd.extend([
+                '-e', 'x265',
+                '--encoder-preset', encoder_preset,
+                '-q', str(quality)
+            ])
         
         # Run with lower priority on Windows and Linux
         if sys.platform == 'win32':
@@ -257,10 +365,14 @@ Examples:
   python convert_videos.py /path/to/videos
   python convert_videos.py --dry-run C:\\Videos
   python convert_videos.py --loop /path/to/videos
+  python convert_videos.py --config config.yaml
         """
     )
     parser.add_argument('directory', 
+                       nargs='?',
                        help='Directory to scan for video files')
+    parser.add_argument('--config',
+                       help='Path to configuration file (default: config.yaml)')
     parser.add_argument('--dry-run', 
                        action='store_true',
                        help='Show what would be converted without actually converting')
@@ -273,22 +385,46 @@ Examples:
     
     args = parser.parse_args()
     
+    # Load configuration file
+    config = load_config(args.config)
+    
+    # Command line arguments override config file settings
+    target_directory = args.directory or config.get('directory')
+    dry_run = args.dry_run or config.get('dry_run', False)
+    loop_mode = args.loop or config.get('loop', False)
+    preserve_original = args.preserve_original or config.get('preserve_original', False)
+    
+    # Check for environment variable override
+    preserve_original = preserve_original or os.getenv("VIDEO_CONVERTER_PRESERVE_ORIGINAL", "").lower() in ("1", "true", "yes")
+    
+    # Parse min file size from config
+    try:
+        min_file_size = parse_file_size(config.get('min_file_size', '1GB'))
+    except ValueError as e:
+        logger.error(f"Invalid min_file_size in config: {e}")
+        sys.exit(1)
+    
+    # Get output configuration
+    output_config = config.get('output', {})
+    
     # Validate directory
-    if not os.path.isdir(args.directory):
-        logger.error(f"Error: '{args.directory}' is not a valid directory.")
+    if not target_directory:
+        logger.error("Error: No directory specified. Provide via command line or config file.")
+        parser.print_help()
+        sys.exit(1)
+    
+    if not os.path.isdir(target_directory):
+        logger.error(f"Error: '{target_directory}' is not a valid directory.")
         sys.exit(1)
     
     # Check dependencies
     check_dependencies()
     
-    # Check for environment variable override
-    preserve_original = args.preserve_original or os.getenv("VIDEO_CONVERTER_PRESERVE_ORIGINAL", "").lower() in ("1", "true", "yes")
-    
     # Main processing loop
     while True:
-        logger.info(f"Starting scan in {args.directory}")
+        logger.info(f"Starting scan in {target_directory}")
         
-        files = find_eligible_files(args.directory)
+        files = find_eligible_files(target_directory, min_file_size)
         
         if not files:
             logger.info("No eligible files found.")
@@ -298,9 +434,10 @@ Examples:
                 logger.info(f"  {file}")
             
             for file in files:
-                convert_file(file, dry_run=args.dry_run, preserve_original=preserve_original)
+                convert_file(file, dry_run=dry_run, preserve_original=preserve_original, 
+                           output_config=output_config)
         
-        if not args.loop:
+        if not loop_mode:
             break
         
         logger.info("Waiting 1 hour before next scan...")

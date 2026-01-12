@@ -40,3 +40,6 @@ Thumbs.db
 # Test files
 /tmp/
 test_videos/
+
+# Configuration
+config.yaml
