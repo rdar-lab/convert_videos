@@ -36,7 +36,7 @@ SUPPORTED_FORMATS = ['mkv', 'mp4']
 # x265 CPU encoder presets
 X265_PRESETS = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
 # NVENC GPU encoder presets (HandBrake-compatible)
-NVENC_PRESETS = ['default', 'slow', 'medium', 'fast']
+NVENC_PRESETS = ['default', 'fast', 'medium', 'slow']
 # All supported presets (combined)
 SUPPORTED_PRESETS = X265_PRESETS + NVENC_PRESETS
 SIZE_MULTIPLIERS = {
