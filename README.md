@@ -162,3 +162,30 @@ python convert_videos.py --preserve-original /path/to/videos
 export VIDEO_CONVERTER_PRESERVE_ORIGINAL=true
 python convert_videos.py /path/to/videos
 ```
+
+## Development & Testing
+
+This project includes comprehensive unit tests and continuous integration.
+
+### Running Tests
+
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Run tests
+pytest test_convert_videos.py -v
+
+# Run tests with coverage
+pytest test_convert_videos.py --cov=convert_videos --cov-report=term-missing
+```
+
+See [TESTING.md](TESTING.md) for detailed testing documentation.
+
+### Continuous Integration
+
+Tests are automatically run via GitHub Actions on:
+- Push to main/master/develop branches
+- Pull requests to these branches
+- Across multiple OS: Ubuntu, Windows, macOS
+- Across Python versions: 3.8, 3.9, 3.10, 3.11, 3.12
