@@ -46,23 +46,17 @@ FILE_SIZE_PATTERN = re.compile(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$', re.IGNORECA
 
 def validate_encoder(encoder_type):
     """Validate that the encoder type is supported."""
-    if encoder_type not in SUPPORTED_ENCODERS:
-        return False
-    return True
+    return encoder_type in SUPPORTED_ENCODERS
 
 
 def validate_format(format_type):
     """Validate that the output format is supported."""
-    if format_type not in SUPPORTED_FORMATS:
-        return False
-    return True
+    return format_type in SUPPORTED_FORMATS
 
 
 def validate_preset(preset):
     """Validate that the encoder preset is supported."""
-    if preset not in SUPPORTED_PRESETS:
-        return False
-    return True
+    return preset in SUPPORTED_PRESETS
 
 
 def validate_quality(quality):
@@ -290,11 +284,7 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     
     # Validate quality parameter
     if not validate_quality(quality):
-        try:
-            quality_int = int(quality)
-            logger.error(f"Invalid quality value: {quality_int}. Must be between 0 and 51.")
-        except (TypeError, ValueError):
-            logger.error(f"Invalid quality value: {quality!r}. Must be an integer between 0 and 51.")
+        logger.error(f"Invalid quality value: {quality!r}. Must be an integer between 0 and 51.")
         return False
     
     # Avoid collisions with existing output or temp files
