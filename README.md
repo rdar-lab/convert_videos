@@ -25,6 +25,9 @@ python convert_videos.py --loop "C:\Path\To\Videos"
 
 # Dry run to see what would be converted:
 python convert_videos.py --dry-run "C:\Path\To\Videos"
+
+# Keep original files after conversion:
+python convert_videos.py --preserve-original "C:\Path\To\Videos"
 ```
 
 ### Linux/macOS (Without Docker)
@@ -44,6 +47,9 @@ python3 convert_videos.py /path/to/videos
 
 # Or run continuously:
 python3 convert_videos.py --loop /path/to/videos
+
+# Keep original files after conversion:
+python3 convert_videos.py --preserve-original /path/to/videos
 ```
 
 ### Docker (Linux)
@@ -74,12 +80,31 @@ docker run \
 
 1. Scans the specified directory and all subdirectories
 2. Finds video files (MP4, MKV, MOV, AVI) that are 1GB or larger
-3. Checks if they're already encoded with H.265 (HEVC)
-4. Converts non-HEVC videos to H.265 using optimal settings
-5. Validates the conversion by comparing video durations
-6. Removes the original file if conversion is successful
+3. Skips files marked as `.fail` (failed previous conversions)
+4. Checks if they're already encoded with H.265 (HEVC)
+5. Converts non-HEVC videos to H.265 using optimal settings
+6. Preserves all audio tracks and subtitles from the original file
+7. Validates the conversion by comparing video durations
+8. Removes the original file if conversion is successful (unless `--preserve-original` is used)
 
 ## File Naming
 
-- Converted files: `[Original Name] - New.mkv`
-- Failed conversions: `[Original Name].[ext].fail`
+- Converted files: `[Original Name] - New.mkv` (or with counter if collision: `[Original Name] - New (1).mkv`)
+- Failed conversions: `[Original Name].[ext].fail` (or with counter: `[Original Name].[ext].fail_1`)
+
+## Advanced Options
+
+### Preserve Original Files
+
+By default, original files are deleted after successful conversion. To keep them:
+
+**Command line flag:**
+```bash
+python convert_videos.py --preserve-original /path/to/videos
+```
+
+**Environment variable:**
+```bash
+export VIDEO_CONVERTER_PRESERVE_ORIGINAL=true
+python convert_videos.py /path/to/videos
+```

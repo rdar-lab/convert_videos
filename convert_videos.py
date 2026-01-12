@@ -16,7 +16,6 @@ import subprocess
 import argparse
 import logging
 from pathlib import Path
-from datetime import datetime
 import time
 
 
@@ -71,7 +70,7 @@ def get_duration(file_path):
     """Get the duration of a video file in seconds."""
     try:
         result = subprocess.run(
-            ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+            ['ffprobe', '-v', 'error',
              '-show_entries', 'format=duration',
              '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
             stdout=subprocess.PIPE,
@@ -101,6 +100,10 @@ def find_eligible_files(target_dir):
     for ext in video_extensions:
         for file_path in target_path.rglob(f'*{ext}'):
             try:
+                # Skip files marked as failed conversions
+                if '.fail' in file_path.name:
+                    continue
+                
                 # Check file size
                 file_size = file_path.stat().st_size
                 if file_size < min_size:
@@ -110,19 +113,31 @@ def find_eligible_files(target_dir):
                 codec = get_codec(file_path)
                 if codec != 'hevc':
                     eligible_files.append((file_size, file_path))
-            except Exception as e:
-                logger.error(f"Error processing {file_path}: {e}")
+            except OSError:
+                logger.exception(f"Error processing {file_path}")
     
     # Sort by size (largest first)
     eligible_files.sort(reverse=True, key=lambda x: x[0])
     return [f[1] for f in eligible_files]
 
 
-def convert_file(input_path, dry_run=False):
+def convert_file(input_path, dry_run=False, preserve_original=False):
     """Convert a video file to H.265 using HandBrakeCLI."""
     input_path = Path(input_path)
-    output_path = input_path.with_name(f"{input_path.stem} - New.mkv")
+    
+    # Avoid collisions with existing output or temp files
+    base_name = f"{input_path.stem} - New"
+    output_path = input_path.with_name(f"{base_name}.mkv")
     temp_output = output_path.with_suffix('.mkv.temp')
+    
+    if output_path.exists() or temp_output.exists():
+        counter = 1
+        while True:
+            output_path = input_path.with_name(f"{base_name} ({counter}).mkv")
+            temp_output = output_path.with_suffix('.mkv.temp')
+            if not output_path.exists() and not temp_output.exists():
+                break
+            counter += 1
     
     logger.info(f"Starting conversion: {input_path}")
     
@@ -141,8 +156,9 @@ def convert_file(input_path, dry_run=False):
             '--encoder-profile', 'main10',
             '-q', '24',
             '-f', 'mkv',
-            '--audio', '1',
-            '--aencoder', 'copy'
+            '--all-audio',
+            '--aencoder', 'copy',
+            '--all-subtitles'
         ]
         
         # Run with lower priority on Windows and Linux
@@ -160,16 +176,19 @@ def convert_file(input_path, dry_run=False):
                 subprocess.run(cmd, check=True)
         
         # Validate and finalize
-        return validate_and_finalize(input_path, temp_output, output_path)
+        return validate_and_finalize(input_path, temp_output, output_path, preserve_original)
         
     except subprocess.CalledProcessError as e:
         logger.error(f"Conversion failed for {input_path}: {e}")
         if temp_output.exists():
-            temp_output.unlink()
+            try:
+                temp_output.unlink()
+            except OSError as cleanup_error:
+                logger.error(f"Failed to cleanup temp file {temp_output}: {cleanup_error}")
         return False
 
 
-def validate_and_finalize(input_path, temp_output, final_output):
+def validate_and_finalize(input_path, temp_output, final_output, preserve_original=False):
     """Validate the conversion and finalize the output."""
     src_duration = get_duration(input_path)
     out_duration = get_duration(temp_output)
@@ -177,32 +196,52 @@ def validate_and_finalize(input_path, temp_output, final_output):
     if src_duration == 0 or out_duration == 0:
         logger.error(f"❌ Could not determine duration: src={src_duration} vs out={out_duration}")
         if temp_output.exists():
-            temp_output.unlink()
+            try:
+                temp_output.unlink()
+            except OSError as cleanup_error:
+                logger.error(f"Failed to cleanup temp file {temp_output}: {cleanup_error}")
         return False
     
     diff = abs(src_duration - out_duration)
     if diff <= 1:
-        # Success - move temp to final and remove original
+        # Success - move temp to final and optionally remove original
         temp_output.rename(final_output)
-        input_path.unlink()
-        logger.info(f"✅ Successfully converted: {final_output}")
+        if not preserve_original:
+            input_path.unlink()
+            logger.info(f"✅ Successfully converted: {final_output}")
+        else:
+            logger.info(f"✅ Successfully converted (original preserved): {final_output}")
         return True
     else:
         # Duration mismatch - keep both files but mark original as failed
         temp_output.rename(final_output)
         
-        # Create unique .fail filename if one already exists
-        failed_path = input_path.with_suffix(input_path.suffix + '.fail')
-        counter = 1
-        while failed_path.exists():
-            failed_path = input_path.with_suffix(f"{input_path.suffix}.fail.{counter}")
-            counter += 1
-        
-        try:
-            input_path.rename(failed_path)
-            logger.error(f"❌ Duration mismatch: src={src_duration} vs out={out_duration} for file {input_path}")
-        except Exception as e:
-            logger.error(f"❌ Failed to rename original file: {e}")
+        # Create unique .fail filename atomically to handle race conditions
+        base_failed_path = input_path.with_suffix(input_path.suffix + '.fail')
+        counter = 0
+        while True:
+            if counter == 0:
+                failed_path = base_failed_path
+            else:
+                failed_path = input_path.with_suffix(f"{input_path.suffix}.fail_{counter}")
+            
+            try:
+                input_path.rename(failed_path)
+                logger.error(
+                    f"❌ Duration mismatch: src={src_duration} vs out={out_duration} for file {input_path}"
+                )
+                break
+            except FileExistsError:
+                # Another process created this path; try the next suffix
+                counter += 1
+                continue
+            except OSError as e:
+                logger.error(
+                    f"❌ Failed to rename original file '{input_path}' to '{failed_path}': "
+                    f"{type(e).__name__}: {e}",
+                    exc_info=True,
+                )
+                break
         
         return False
 
@@ -227,6 +266,9 @@ Examples:
     parser.add_argument('--loop', 
                        action='store_true',
                        help='Run continuously, checking every hour')
+    parser.add_argument('--preserve-original', 
+                       action='store_true',
+                       help='Keep original files after successful conversion (default: remove)')
     
     args = parser.parse_args()
     
@@ -237,6 +279,9 @@ Examples:
     
     # Check dependencies
     check_dependencies()
+    
+    # Check for environment variable override
+    preserve_original = args.preserve_original or os.getenv("VIDEO_CONVERTER_PRESERVE_ORIGINAL", "").lower() in ("1", "true", "yes")
     
     # Main processing loop
     while True:
@@ -252,7 +297,7 @@ Examples:
                 logger.info(f"  {file}")
             
             for file in files:
-                convert_file(file, dry_run=args.dry_run)
+                convert_file(file, dry_run=args.dry_run, preserve_original=preserve_original)
         
         if not args.loop:
             break
