@@ -42,6 +42,13 @@ DEFAULT_MIN_FILE_SIZE_BYTES = 1024 ** 3  # 1GB
 FILE_SIZE_PATTERN = re.compile(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$')
 
 
+def validate_encoder(encoder_type):
+    """Validate that the encoder type is supported."""
+    if encoder_type not in SUPPORTED_ENCODERS:
+        return False
+    return True
+
+
 def parse_file_size(size_str):
     """Parse file size string (e.g., '1GB', '500MB') to bytes."""
     if isinstance(size_str, int):
@@ -95,8 +102,8 @@ def load_config(config_path=None):
         # Merge with defaults
         config = {**default_config, **user_config}
         
-        # Merge output settings
-        if 'output' in user_config:
+        # Merge output settings if present
+        if 'output' in user_config and user_config['output'] is not None:
             config['output'] = {**default_config['output'], **user_config['output']}
         
         logger.info(f"Loaded configuration from {config_path}")
@@ -221,7 +228,7 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     quality = output_config.get('quality', 24)
     
     # Validate encoder type early
-    if encoder_type not in SUPPORTED_ENCODERS:
+    if not validate_encoder(encoder_type):
         logger.error(f"Unsupported encoder type: {encoder_type}. Supported: {', '.join(SUPPORTED_ENCODERS)}")
         return False
     
@@ -421,7 +428,7 @@ Examples:
     
     # Validate encoder type early
     encoder_type = output_config.get('encoder', 'x265_10bit')
-    if encoder_type not in SUPPORTED_ENCODERS:
+    if not validate_encoder(encoder_type):
         logger.error(f"Unsupported encoder type in config: '{encoder_type}'. Supported encoders: {', '.join(SUPPORTED_ENCODERS)}")
         sys.exit(1)
     
