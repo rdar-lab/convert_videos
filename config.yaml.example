@@ -1,0 +1,49 @@
+# Example configuration file for convert_videos
+# Copy this file to config.yaml and customize as needed
+
+# Directory to scan for video files
+# Can be overridden by command line argument
+directory: "/path/to/videos"
+
+# Minimum file size threshold
+# Can be specified as human-readable format (e.g., "1GB", "500MB", "2GB")
+# or as raw bytes (e.g., 1073741824)
+# Default: 1073741824 bytes (1GB)
+min_file_size: "1GB"
+
+# Output format and encoder settings
+output:
+  # Output container format: mkv, mp4
+  format: "mkv"
+  
+  # Video encoder to use: x265, x265_10bit, or nvenc_hevc (for GPU acceleration)
+  # x265: Standard H.265 8-bit encoding (CPU)
+  # x265_10bit: H.265 10-bit encoding (CPU, better quality)
+  # nvenc_hevc: NVIDIA GPU-accelerated H.265 encoding (requires NVIDIA GPU)
+  encoder: "x265_10bit"
+  
+  # Encoder preset:
+  # For x265/x265_10bit: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+  #   - Faster presets = faster encoding but larger files
+  #   - Slower presets = slower encoding but smaller files
+  # For nvenc_hevc: default, fast, medium, slow
+  #   - Note: x265 preset names will be automatically mapped to NVENC equivalents
+  preset: "medium"
+  
+  # Quality setting (lower = better quality but larger file)
+  # For x265/x265_10bit: Range 0-51 (CRF), recommended: 20-28
+  # For nvenc_hevc: Range 0-51 (CQ), recommended: 20-28
+  #   - Both encoders use similar quality scales, though results may differ
+  quality: 24
+
+# Preserve original files after successful conversion
+# Default: false (original files are deleted)
+preserve_original: false
+
+# Run in loop mode (continuously scan every hour)
+# Default: false
+loop: false
+
+# Dry run mode (show what would be converted without converting)
+# Default: false
+dry_run: false
