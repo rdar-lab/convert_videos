@@ -101,7 +101,8 @@ def find_eligible_files(target_dir):
         for file_path in target_path.rglob(f'*{ext}'):
             try:
                 # Skip files marked as failed conversions
-                if '.fail' in file_path.name:
+                # Check for .fail suffix (e.g., video.mp4.fail, video.mp4.fail_1)
+                if file_path.suffix == '.fail' or '.fail_' in file_path.name:
                     continue
                 
                 # Check file size
