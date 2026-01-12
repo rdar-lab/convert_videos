@@ -3,15 +3,18 @@ set -e
 
 DRY_RUN=false
 
-# Parse arguments for --dry-run flag
+# Parse and remove --dry-run from arguments
+ARGS=()
 for arg in "$@"; do
     if [[ "$arg" == "--dry-run" ]]; then
         DRY_RUN=true
+    else
+        ARGS+=("$arg")
     fi
 done
 
-# Directory to process - default is /data or first argument if not --dry-run
-TARGET_DIR=${1:-/data}
+# Now safely get the directory
+TARGET_DIR=${ARGS[0]:-/data}
 
 # Build command with appropriate flags using array
 CMD_ARGS=('python3' '/usr/local/bin/convert_videos.py')

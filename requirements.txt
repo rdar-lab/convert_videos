@@ -1,5 +1,6 @@
 # Python dependencies
-PyYAML>=6.0
+# Pinned to exact version for security and reproducibility
+PyYAML==6.0.2
 
 # System tools that must be installed:
 # - ffmpeg (provides ffprobe)
