@@ -124,8 +124,8 @@ python convert_videos.py --loop "C:\Path\To\Videos"
 # Dry run to see what would be converted:
 python convert_videos.py --dry-run "C:\Path\To\Videos"
 
-# Keep original files after conversion:
-python convert_videos.py --preserve-original "C:\Path\To\Videos"
+# Remove original files after conversion:
+python convert_videos.py --remove-original-files "C:\Path\To\Videos"
 
 # Explicitly use background mode:
 python convert_videos.py --background "C:\Path\To\Videos"
@@ -160,8 +160,8 @@ python3 convert_videos.py --config config.yaml
 # Run continuously:
 python3 convert_videos.py --loop /path/to/videos
 
-# Keep original files after conversion:
-python3 convert_videos.py --preserve-original /path/to/videos
+# Remove original files after conversion:
+python3 convert_videos.py --remove-original-files /path/to/videos
 
 # Explicitly use background mode:
 python3 convert_videos.py --background /path/to/videos
@@ -218,9 +218,9 @@ By default, original files are preserved after successful conversion. To remove 
 remove_original_files: true
 ```
 
-**Command line flag (preserves original, overrides config):**
+**Command line flag:**
 ```bash
-python convert_videos.py --preserve-original /path/to/videos
+python convert_videos.py --remove-original-files /path/to/videos
 ```
 
 **Environment variable:**

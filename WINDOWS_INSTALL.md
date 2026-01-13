@@ -122,17 +122,16 @@ Run in a loop that checks for new files every hour:
 python convert_videos.py --loop "C:\Path\To\Your\Videos"
 ```
 
-### Preserve Original Files
+### Remove Original Files
 
-Keep original files after successful conversion (default is to remove them):
+Remove original files after successful conversion (default is to keep them):
 ```cmd
-python convert_videos.py --preserve-original "C:\Path\To\Your\Videos"
+python convert_videos.py --remove-original-files "C:\Path\To\Your\Videos"
 ```
 
-Or set an environment variable:
-```cmd
-set VIDEO_CONVERTER_PRESERVE_ORIGINAL=true
-python convert_videos.py "C:\Path\To\Your\Videos"
+Or set in configuration file:
+```yaml
+remove_original_files: true
 ```
 
 ### Using PowerShell
@@ -152,7 +151,7 @@ The script will:
 5. Convert non-HEVC videos to H.265 using HandBrakeCLI
 6. Preserve all audio tracks and subtitles from the original file
 7. Validate the conversion by comparing video durations
-8. Remove the original file if conversion is successful (unless `--preserve-original` is used)
+8. By default, keep the original file (unless `--remove-original-files` is used)
 9. Mark the original file as `.fail` if there's a duration mismatch
 
 ## Running as a Background Task
@@ -207,9 +206,9 @@ The script will:
 
 ## Notes
 
-- Original files are deleted only after successful conversion (unless `--preserve-original` flag is used)
+- Original files are kept by default after successful conversion (use `--remove-original-files` to remove them)
 - If conversion fails (duration mismatch), the original is renamed to `.fail` (or `.fail_1`, `.fail_2`, etc. to avoid collisions)
-- The converted file is saved as `[original name] - New.mkv` (or with counter if collision)
+- The converted file is saved as `[original name].converted.mkv` (or with counter if collision)
 - Only files 1GB or larger are processed
 - Files with `.fail` in the name are automatically skipped to prevent re-processing
 - All audio tracks and subtitles from the original file are preserved

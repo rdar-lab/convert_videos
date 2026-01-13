@@ -589,9 +589,9 @@ Examples:
     parser.add_argument('--loop', 
                        action='store_true',
                        help='Run continuously, checking every hour')
-    parser.add_argument('--preserve-original', 
+    parser.add_argument('--remove-original-files', 
                        action='store_true',
-                       help='Keep original files after successful conversion (default: remove)')
+                       help='Remove original files after successful conversion (default: keep originals)')
     parser.add_argument('--background',
                        action='store_true',
                        help='Run in background mode (CLI, no GUI) - for Docker/service use')
@@ -636,8 +636,8 @@ Examples:
     remove_original = config.get('remove_original_files', False)
     
     # Command line flag overrides config
-    if args.preserve_original:
-        remove_original = False
+    if args.remove_original_files:
+        remove_original = True
     
     preserve_original = not remove_original
     
