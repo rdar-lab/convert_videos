@@ -110,7 +110,10 @@ def find_dependency_path(dependency_name, config_path=None):
             return str(bundled_path)
     
     # Fall back to config path or dependency name (will be resolved via PATH)
-    return config_path if config_path else dependency_name
+    # If config_path is just a name (not absolute), treat it same as dependency_name
+    if config_path and Path(config_path).is_absolute():
+        return config_path
+    return dependency_name
 
 
 def setup_logging(log_file_path=None):
