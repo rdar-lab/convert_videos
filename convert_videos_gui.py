@@ -106,13 +106,13 @@ class VideoConverterGUI:
         ttk.Label(dir_frame, text="Target Directory:").grid(row=0, column=0, sticky='w', pady=5)
         self.dir_entry = ttk.Entry(dir_frame, width=50)
         self.dir_entry.grid(row=0, column=1, padx=5, pady=5)
-        self.dir_entry.insert(0, self.config.get('directory', ''))
+        self.dir_entry.insert(0, self.config.get('directory') or '')
         ttk.Button(dir_frame, text="Browse...", command=self.browse_directory).grid(row=0, column=2, pady=5)
         
         ttk.Label(dir_frame, text="Min File Size:").grid(row=1, column=0, sticky='w', pady=5)
         self.min_size_entry = ttk.Entry(dir_frame, width=20)
         self.min_size_entry.grid(row=1, column=1, sticky='w', padx=5, pady=5)
-        self.min_size_entry.insert(0, str(self.config.get('min_file_size', '1GB')))
+        self.min_size_entry.insert(0, str(self.config.get('min_file_size') or '1GB'))
         ttk.Label(dir_frame, text="(e.g., 1GB, 500MB)").grid(row=1, column=2, sticky='w')
         
         # Output settings
@@ -142,7 +142,7 @@ class VideoConverterGUI:
         ttk.Label(output_frame, text="Quality:").grid(row=3, column=0, sticky='w', pady=5)
         self.quality_entry = ttk.Entry(output_frame, width=20)
         self.quality_entry.grid(row=3, column=1, sticky='w', padx=5, pady=5)
-        self.quality_entry.insert(0, str(output_config.get('quality', 24)))
+        self.quality_entry.insert(0, str(output_config.get('quality') or 24))
         ttk.Label(output_frame, text="(0-51, lower=better)").grid(row=3, column=2, sticky='w')
         
         # Other options
@@ -372,10 +372,10 @@ class VideoConverterGUI:
     def update_config_ui(self):
         """Update UI fields with current config."""
         self.dir_entry.delete(0, tk.END)
-        self.dir_entry.insert(0, self.config.get('directory', ''))
+        self.dir_entry.insert(0, self.config.get('directory') or '')
         
         self.min_size_entry.delete(0, tk.END)
-        self.min_size_entry.insert(0, str(self.config.get('min_file_size', '1GB')))
+        self.min_size_entry.insert(0, str(self.config.get('min_file_size') or '1GB'))
         
         output_config = self.config.get('output', {})
         self.format_var.set(output_config.get('format', 'mkv'))
@@ -383,7 +383,7 @@ class VideoConverterGUI:
         self.preset_var.set(output_config.get('preset', 'medium'))
         
         self.quality_entry.delete(0, tk.END)
-        self.quality_entry.insert(0, str(output_config.get('quality', 24)))
+        self.quality_entry.insert(0, str(output_config.get('quality') or 24))
         
         self.preserve_var.set(self.config.get('preserve_original', False))
         self.dry_run_var.set(self.config.get('dry_run', False))
