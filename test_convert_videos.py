@@ -458,7 +458,7 @@ class TestFindEligibleFiles(unittest.TestCase):
             h264_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
             hevc_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
             
-            def codec_side_effect(path):
+            def codec_side_effect(path, dependency_config=None):
                 if 'h264' in str(path):
                     return 'h264'
                 return 'hevc'
