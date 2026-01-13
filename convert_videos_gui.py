@@ -13,8 +13,11 @@ import logging
 import os
 import subprocess
 import re
+import platform
 
 import convert_videos
+import duplicate_detector
+from PIL import Image, ImageTk
 
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,13 @@ class VideoConverterGUI:
         self.is_running = False
         self.stop_requested = False
         
+        # Duplicate detection state
+        self.duplicate_results = []
+        self.duplicate_scan_running = False
+        self.duplicate_progress_queue = queue.Queue()  # Separate queue for duplicate detection
+        self.thumbnail_tooltip = None  # For showing thumbnail on hover
+        self.thumbnail_images = {}  # Keep references to prevent garbage collection
+        
         # Thread communication
         self.progress_queue = queue.Queue()
         self.conversion_thread = None
@@ -66,8 +76,9 @@ class VideoConverterGUI:
         # Bind tab switch event to regenerate config
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         
-        # Start progress update loop
+        # Start progress update loops
         self.update_progress()
+        self.update_duplicate_progress()
         
     def create_ui(self):
         """Create the main UI with tabs."""
@@ -89,6 +100,11 @@ class VideoConverterGUI:
         self.results_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.results_tab, text="Results")
         self.create_results_tab()
+        
+        # Detect Duplicates Tab
+        self.duplicates_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.duplicates_tab, text="Detect Duplicates")
+        self.create_duplicates_tab()
         
     def create_config_tab(self):
         """Create the configuration editor tab."""
@@ -171,9 +187,15 @@ class VideoConverterGUI:
         self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
         ttk.Button(deps_frame, text="Browse...", command=self.browse_ffprobe).grid(row=1, column=2, pady=5)
         
+        ttk.Label(deps_frame, text="ffmpeg:").grid(row=2, column=0, sticky='w', pady=5)
+        self.ffmpeg_entry = ttk.Entry(deps_frame, width=40)
+        self.ffmpeg_entry.grid(row=2, column=1, padx=5, pady=5)
+        self.ffmpeg_entry.insert(0, dependency_config.get('ffmpeg') or 'ffmpeg')
+        ttk.Button(deps_frame, text="Browse...", command=self.browse_ffmpeg).grid(row=2, column=2, pady=5)
+        
         # Download dependencies button
         ttk.Button(deps_frame, text="Download Dependencies", 
-                  command=self.download_dependencies).grid(row=2, column=1, pady=10, sticky='w')
+                  command=self.download_dependencies).grid(row=3, column=1, pady=10, sticky='w')
         
         # Other options
         options_frame = ttk.LabelFrame(scrollable_frame, text="Other Options", padding=10)
@@ -296,7 +318,103 @@ class VideoConverterGUI:
         # Clear button
         ttk.Button(self.results_tab, text="Clear Results", 
                   command=self.clear_results).pack(pady=5)
+    
+    def create_duplicates_tab(self):
+        """Create the duplicate detection tab."""
+        # Directory selection
+        dir_frame = ttk.LabelFrame(self.duplicates_tab, text="Scan Settings", padding=10)
+        dir_frame.pack(fill='x', padx=10, pady=5)
         
+        ttk.Label(dir_frame, text="Directory to Scan:").grid(row=0, column=0, sticky='w', pady=5)
+        self.dup_dir_entry = ttk.Entry(dir_frame, width=50)
+        self.dup_dir_entry.grid(row=0, column=1, padx=5, pady=5)
+        default_dir = self.config.get('directory') or os.getcwd()
+        self.dup_dir_entry.insert(0, default_dir)
+        ttk.Button(dir_frame, text="Browse...", command=self.browse_duplicate_directory).grid(row=0, column=2, pady=5)
+        
+        ttk.Label(dir_frame, text="Max Hamming Distance:").grid(row=1, column=0, sticky='w', pady=5)
+        self.hamming_distance_entry = ttk.Entry(dir_frame, width=10)
+        self.hamming_distance_entry.grid(row=1, column=1, sticky='w', padx=5, pady=5)
+        self.hamming_distance_entry.insert(0, "5")
+        ttk.Label(dir_frame, text="(Lower = more similar, recommended: 5)").grid(row=1, column=2, sticky='w')
+        
+        # Control buttons
+        button_frame = ttk.Frame(self.duplicates_tab)
+        button_frame.pack(fill='x', padx=10, pady=5)
+        
+        self.scan_duplicates_button = ttk.Button(button_frame, text="Scan for Duplicates", 
+                                                  command=self.scan_for_duplicates)
+        self.scan_duplicates_button.pack(side='left', padx=5)
+        
+        self.clear_duplicates_button = ttk.Button(button_frame, text="Clear Results", 
+                                                   command=self.clear_duplicate_results)
+        self.clear_duplicates_button.pack(side='left', padx=5)
+        
+        # Status label
+        self.dup_status_label = ttk.Label(self.duplicates_tab, text="Ready to scan", foreground="blue")
+        self.dup_status_label.pack(fill='x', padx=10, pady=5)
+        
+        # Progress bar
+        self.dup_progress_bar = ttk.Progressbar(self.duplicates_tab, mode='indeterminate')
+        self.dup_progress_bar.pack(fill='x', padx=10, pady=5)
+        
+        # Results tree
+        tree_frame = ttk.Frame(self.duplicates_tab)
+        tree_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        
+        # Scrollbars
+        tree_scroll_y = ttk.Scrollbar(tree_frame, orient='vertical')
+        tree_scroll_x = ttk.Scrollbar(tree_frame, orient='horizontal')
+        
+        # Create treeview
+        columns = ('Distance', 'Files', 'Thumbnail')
+        self.duplicates_tree = ttk.Treeview(tree_frame, columns=columns, show='tree headings',
+                                           yscrollcommand=tree_scroll_y.set,
+                                           xscrollcommand=tree_scroll_x.set)
+        
+        tree_scroll_y.config(command=self.duplicates_tree.yview)
+        tree_scroll_x.config(command=self.duplicates_tree.xview)
+        
+        # Configure columns
+        self.duplicates_tree.heading('#0', text='Group / File')
+        self.duplicates_tree.heading('Distance', text='Hamming Distance')
+        self.duplicates_tree.heading('Files', text='File Count')
+        self.duplicates_tree.heading('Thumbnail', text='Thumbnail Path')
+        
+        self.duplicates_tree.column('#0', width=200, minwidth=150)
+        self.duplicates_tree.column('Distance', width=120, minwidth=100)
+        self.duplicates_tree.column('Files', width=100, minwidth=80)
+        self.duplicates_tree.column('Thumbnail', width=300, minwidth=200)
+        
+        # Pack
+        self.duplicates_tree.pack(side='left', fill='both', expand=True)
+        tree_scroll_y.pack(side='right', fill='y')
+        tree_scroll_x.pack(side='bottom', fill='x')
+        
+        # Bind mouse events for thumbnail tooltips
+        self.duplicates_tree.bind('<Motion>', self.show_thumbnail_tooltip)
+        self.duplicates_tree.bind('<Leave>', self.hide_thumbnail_tooltip)
+        
+        # Bind right-click for context menu
+        self.duplicates_tree.bind('<Button-3>', self.show_file_context_menu)  # Right-click
+        self.duplicates_tree.bind('<Button-2>', self.show_file_context_menu)  # Middle-click on macOS
+        
+        # Summary label
+        self.dup_summary_label = ttk.Label(self.duplicates_tab, text="No duplicates found yet")
+        self.dup_summary_label.pack(fill='x', padx=10, pady=5)
+        
+    
+    def browse_duplicate_directory(self):
+        """Open directory browser for duplicate detection."""
+        try:
+            directory = filedialog.askdirectory(initialdir=self.dup_dir_entry.get())
+            if directory:
+                self.dup_dir_entry.delete(0, tk.END)
+                self.dup_dir_entry.insert(0, directory)
+        except Exception as e:
+            logger.error(f"Browse directory error: {repr(e)}")
+            messagebox.showerror("Browse Error", f"Failed to browse directory:\n{repr(e)}")
+    
     def browse_directory(self):
         """Open directory browser."""
         try:
@@ -336,6 +454,20 @@ class VideoConverterGUI:
             logger.error(f"Browse ffprobe error: {repr(e)}")
             messagebox.showerror("Browse Error", f"Failed to browse for ffprobe:\n{repr(e)}")
     
+    def browse_ffmpeg(self):
+        """Open file browser for ffmpeg executable."""
+        try:
+            file_path = filedialog.askopenfilename(
+                title="Select ffmpeg executable",
+                filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
+            )
+            if file_path:
+                self.ffmpeg_entry.delete(0, tk.END)
+                self.ffmpeg_entry.insert(0, file_path)
+        except Exception as e:
+            logger.error(f"Browse ffmpeg error: {repr(e)}")
+            messagebox.showerror("Browse Error", f"Failed to browse for ffmpeg:\n{repr(e)}")
+    
     def download_dependencies(self):
         """Download HandBrakeCLI and ffprobe to ./dependencies directory."""
         # Confirm with user
@@ -359,10 +491,10 @@ class VideoConverterGUI:
             
             try:
                 # Call centralized download function
-                handbrake_path, ffprobe_path = convert_videos.download_dependencies(progress_callback)
+                handbrake_path, ffprobe_path, ffmpeg_path = convert_videos.download_dependencies(progress_callback)
                 
-                if handbrake_path and ffprobe_path:
-                    self.progress_queue.put(('download_complete', (handbrake_path, ffprobe_path)))
+                if handbrake_path and ffprobe_path and ffmpeg_path:
+                    self.progress_queue.put(('download_complete', (handbrake_path, ffprobe_path, ffmpeg_path)))
                 else:
                     self.progress_queue.put(('download_error', "Download failed. Check logs for details."))
                     
@@ -413,6 +545,7 @@ class VideoConverterGUI:
         # Validate dependencies
         handbrake_path = self.handbrake_entry.get().strip()
         ffprobe_path = self.ffprobe_entry.get().strip()
+        ffmpeg_path = self.ffmpeg_entry.get().strip()
         
         if handbrake_path:
             success, error_type = convert_videos.check_single_dependency(handbrake_path)
@@ -433,6 +566,16 @@ class VideoConverterGUI:
                     errors.append(f"ffprobe exists but is not a valid executable: {ffprobe_path}")
                 elif error_type == "timeout":
                     errors.append(f"ffprobe timed out: {ffprobe_path}")
+        
+        if ffmpeg_path:
+            success, error_type = convert_videos.check_single_dependency(ffmpeg_path)
+            if not success:
+                if error_type == "not_found":
+                    errors.append(f"ffmpeg not found: {ffmpeg_path}")
+                elif error_type == "invalid":
+                    errors.append(f"ffmpeg exists but is not a valid executable: {ffmpeg_path}")
+                elif error_type == "timeout":
+                    errors.append(f"ffmpeg timed out: {ffmpeg_path}")
         
         # Display results
         if errors:
@@ -456,7 +599,8 @@ class VideoConverterGUI:
             },
             'dependencies': {
                 'handbrake': self.handbrake_entry.get().strip(),
-                'ffprobe': self.ffprobe_entry.get().strip()
+                'ffprobe': self.ffprobe_entry.get().strip(),
+                'ffmpeg': self.ffmpeg_entry.get().strip()
             },
             'remove_original_files': self.remove_original_var.get(),
             'dry_run': self.dry_run_var.get(),
@@ -555,6 +699,9 @@ class VideoConverterGUI:
             
             self.ffprobe_entry.delete(0, tk.END)
             self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
+            
+            self.ffmpeg_entry.delete(0, tk.END)
+            self.ffmpeg_entry.insert(0, dependency_config.get('ffmpeg') or 'ffmpeg')
             
             self.remove_original_var.set(self.config.get('remove_original_files', False))
             self.dry_run_var.set(self.config.get('dry_run', False))
@@ -947,17 +1094,20 @@ class VideoConverterGUI:
                     self.validation_label.config(text=data, foreground="blue")
                     
                 elif msg_type == 'download_complete':
-                    handbrake_path, ffprobe_path = data
+                    handbrake_path, ffprobe_path, ffmpeg_path = data
                     # Update the entry fields
                     self.handbrake_entry.delete(0, tk.END)
                     self.handbrake_entry.insert(0, handbrake_path)
                     self.ffprobe_entry.delete(0, tk.END)
                     self.ffprobe_entry.insert(0, ffprobe_path)
+                    self.ffmpeg_entry.delete(0, tk.END)
+                    self.ffmpeg_entry.insert(0, ffmpeg_path)
                     self.validation_label.config(text="✅ Dependencies downloaded successfully!", foreground="green")
                     messagebox.showinfo("Success", 
                                       f"Dependencies downloaded successfully!\n\n"
                                       f"HandBrakeCLI: {handbrake_path}\n"
-                                      f"ffprobe: {ffprobe_path}\n\n"
+                                      f"ffprobe: {ffprobe_path}\n"
+                                      f"ffmpeg: {ffmpeg_path}\n\n"
                                       f"The paths have been updated in the configuration.")
                     
                 elif msg_type == 'download_error':
@@ -969,6 +1119,66 @@ class VideoConverterGUI:
         
         # Schedule next update
         self.root.after(PROGRESS_UPDATE_INTERVAL_MS, self.update_progress)
+    
+    def update_duplicate_progress(self):
+        """Process messages from the duplicate detection thread."""
+        try:
+            while True:
+                msg_type, data = self.duplicate_progress_queue.get_nowait()
+                
+                if msg_type == 'dup_status':
+                    self.dup_status_label.config(text=data, foreground="blue")
+                
+                elif msg_type == 'dup_complete':
+                    duplicate_groups = data
+                    self.duplicate_results = duplicate_groups
+                    self.duplicates_tree.delete(*self.duplicates_tree.get_children())
+                    
+                    for i, group in enumerate(duplicate_groups):
+                        # Show comparison thumbnail path for group if available
+                        group_thumb = group.comparison_thumbnail if group.comparison_thumbnail else ''
+                        group_id = self.duplicates_tree.insert('', 'end', 
+                            text=f'Group {i+1}',
+                            values=(group.hamming_distance, len(group.files), group_thumb))
+                        
+                        # Add files as children with their individual thumbnail paths
+                        for file_path in group.files:
+                            file_name = str(Path(file_path).name)
+                            thumbnail_path = group.file_thumbnails.get(str(file_path), '')
+                            self.duplicates_tree.insert(group_id, 'end', 
+                                text=file_name,
+                                values=('', '', thumbnail_path))
+                    
+                    self.dup_progress_bar.stop()
+                    self.dup_status_label.config(
+                        text=f"✅ Found {len(duplicate_groups)} duplicate groups", 
+                        foreground="green"
+                    )
+                    self.dup_summary_label.config(
+                        text=f"Total Groups: {len(duplicate_groups)} | "
+                             f"Total Duplicate Files: {sum(len(g.files) for g in duplicate_groups)}"
+                    )
+                    self.duplicate_scan_running = False
+                    self.scan_duplicates_button.config(state='normal')
+                    
+                    if duplicate_groups:
+                        messagebox.showinfo("Scan Complete", 
+                            f"Found {len(duplicate_groups)} groups of duplicate videos")
+                    else:
+                        messagebox.showinfo("Scan Complete", "No duplicates found")
+                
+                elif msg_type == 'dup_error':
+                    self.dup_progress_bar.stop()
+                    self.dup_status_label.config(text=f"❌ Error: {data}", foreground="red")
+                    self.duplicate_scan_running = False
+                    self.scan_duplicates_button.config(state='normal')
+                    messagebox.showerror("Scan Error", f"Failed to scan for duplicates:\n\n{data}")
+                    
+        except queue.Empty:
+            pass
+        
+        # Schedule next update
+        self.root.after(PROGRESS_UPDATE_INTERVAL_MS, self.update_duplicate_progress)
         
     def add_result_to_tree(self, result):
         """Add a conversion result to the results tree."""
@@ -1009,6 +1219,380 @@ class VideoConverterGUI:
         except Exception as e:
             logger.error(f"Clear results error: {repr(e)}")
             messagebox.showerror("Clear Error", f"Failed to clear results:\n{repr(e)}")
+    
+    def scan_for_duplicates(self):
+        """Scan directory for duplicate videos."""
+        directory = self.dup_dir_entry.get().strip()
+        if not directory or not os.path.isdir(directory):
+            messagebox.showerror("Invalid Directory", "Please select a valid directory to scan")
+            return
+        
+        try:
+            max_distance = int(self.hamming_distance_entry.get().strip())
+            if max_distance < 0:
+                raise ValueError("Distance must be non-negative")
+        except ValueError as e:
+            messagebox.showerror("Invalid Distance", f"Please enter a valid hamming distance: {e}")
+            return
+        
+        self.duplicate_scan_running = True
+        self.scan_duplicates_button.config(state='disabled')
+        self.dup_status_label.config(text="Scanning for videos...", foreground="blue")
+        self.dup_progress_bar.start()
+        
+        def scan_thread():
+            try:
+                # Get dependency paths
+                dependency_config = self.config.get('dependencies', {})
+                ffprobe_path = convert_videos.find_dependency_path('ffprobe', dependency_config.get('ffprobe'))
+                if not ffprobe_path:
+                    ffprobe_path = 'ffprobe'
+                
+                ffmpeg_path = convert_videos.find_dependency_path('ffmpeg', dependency_config.get('ffmpeg'))
+                if not ffmpeg_path:
+                    ffmpeg_path = 'ffmpeg'
+                
+                # Progress callback
+                def progress_callback(message):
+                    self.duplicate_progress_queue.put(('dup_status', message))
+                
+                # Run duplicate detection
+                duplicate_groups = duplicate_detector.scan_for_duplicates(
+                    directory=directory,
+                    max_distance=max_distance,
+                    ffmpeg_path=ffmpeg_path,
+                    ffprobe_path=ffprobe_path,
+                    progress_callback=progress_callback
+                )
+                
+                self.duplicate_progress_queue.put(('dup_complete', duplicate_groups))
+            
+            except Exception as e:
+                logger.error(f"Duplicate scan error: {repr(e)}")
+                self.duplicate_progress_queue.put(('dup_error', repr(e)))
+        
+        threading.Thread(target=scan_thread, daemon=True).start()
+    
+    def clear_duplicate_results(self):
+        """Clear duplicate detection results."""
+        try:
+            if messagebox.askyesno("Clear Results", "Are you sure you want to clear duplicate results?"):
+                # Track temp directories to clean up
+                temp_dirs = set()
+                
+                # Clean up thumbnail files
+                for result in self.duplicate_results:
+                    # Clean up comparison thumbnail
+                    if result.comparison_thumbnail and os.path.exists(result.comparison_thumbnail):
+                        try:
+                            os.unlink(result.comparison_thumbnail)
+                        except Exception:
+                            # Best-effort cleanup; file may already be deleted
+                            pass
+                    
+                    # Clean up individual file thumbnails
+                    for file_path, thumb_path in result.file_thumbnails.items():
+                        if thumb_path and os.path.exists(thumb_path):
+                            try:
+                                os.unlink(thumb_path)
+                                # Track the parent directory for cleanup
+                                temp_dirs.add(Path(thumb_path).parent)
+                            except Exception:
+                                # Best-effort cleanup; file may already be deleted
+                                pass
+                
+                # Try to remove temp directories after all files are deleted
+                for temp_dir in temp_dirs:
+                    try:
+                        if temp_dir.exists() and temp_dir.name.startswith('video_dup_'):
+                            temp_dir.rmdir()
+                    except Exception:
+                        # Directory may not be empty or may be in use
+                        pass
+                
+                # Clear the thumbnail image cache
+                self.thumbnail_images.clear()
+                
+                self.duplicate_results.clear()
+                self.duplicates_tree.delete(*self.duplicates_tree.get_children())
+                self.dup_summary_label.config(text="No duplicates found yet")
+        except Exception as e:
+            logger.error(f"Clear duplicate results error: {repr(e)}")
+            messagebox.showerror("Clear Error", f"Failed to clear results:\n{repr(e)}")
+    
+    def show_thumbnail_tooltip(self, event):
+        """Show thumbnail image tooltip on mouse hover."""
+        try:
+            # Get the item and column under the mouse
+            item = self.duplicates_tree.identify_row(event.y)
+            column = self.duplicates_tree.identify_column(event.x)
+            
+            if not item or column != '#3':  # Only show for Thumbnail column
+                self.hide_thumbnail_tooltip(None)
+                return
+            
+            # Get the thumbnail path from the cell
+            values = self.duplicates_tree.item(item, 'values')
+            if not values or len(values) < 3 or not values[2]:
+                self.hide_thumbnail_tooltip(None)
+                return
+            
+            thumbnail_path = values[2]
+            
+            # Check if file exists
+            if not os.path.exists(thumbnail_path):
+                self.hide_thumbnail_tooltip(None)
+                return
+            
+            # If tooltip already showing this image, don't recreate
+            if self.thumbnail_tooltip and hasattr(self.thumbnail_tooltip, 'current_path'):
+                if self.thumbnail_tooltip.current_path == thumbnail_path:
+                    return
+            
+            # Hide existing tooltip
+            self.hide_thumbnail_tooltip(None)
+            
+            # Create new tooltip window
+            self.thumbnail_tooltip = tk.Toplevel(self.root)
+            self.thumbnail_tooltip.wm_overrideredirect(True)
+            self.thumbnail_tooltip.current_path = thumbnail_path
+            
+            # Load and display image
+            img = Image.open(thumbnail_path)
+            # Resize if too large
+            max_size = (400, 300)
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            
+            # Convert to PhotoImage and keep reference
+            photo = ImageTk.PhotoImage(img)
+            self.thumbnail_images[thumbnail_path] = photo
+            
+            # Create label with image
+            label = tk.Label(self.thumbnail_tooltip, image=photo, borderwidth=2, relief='solid')
+            label.pack()
+            
+            # Position tooltip near mouse
+            x = event.x_root + 10
+            y = event.y_root + 10
+            self.thumbnail_tooltip.wm_geometry(f"+{x}+{y}")
+            
+        except Exception as e:
+            logger.error(f"Error showing thumbnail tooltip: {repr(e)}")
+            self.hide_thumbnail_tooltip(None)
+    
+    def hide_thumbnail_tooltip(self, event):
+        """Hide thumbnail tooltip."""
+        if self.thumbnail_tooltip:
+            try:
+                self.thumbnail_tooltip.destroy()
+            except Exception:
+                # Tooltip may have already been destroyed
+                pass
+            self.thumbnail_tooltip = None
+    
+    def show_file_context_menu(self, event):
+        """Show context menu for file operations."""
+        try:
+            # Get the item under the cursor
+            item = self.duplicates_tree.identify_row(event.y)
+            if not item:
+                return
+            
+            # Check if this is a file (child item, not group)
+            parent = self.duplicates_tree.parent(item)
+            if not parent:  # This is a group, not a file
+                return
+            
+            # Get the file name from the item
+            file_name = self.duplicates_tree.item(item, 'text')
+            
+            # Find the full file path from the duplicate group that this item belongs to
+            file_path = None
+            
+            # Determine which duplicate group this parent item represents
+            group_items = self.duplicates_tree.get_children('')
+            try:
+                group_index = group_items.index(parent)
+            except ValueError:
+                return
+            
+            # Ensure the index is within the range of available duplicate results
+            if group_index < 0 or group_index >= len(self.duplicate_results):
+                return
+            
+            group = self.duplicate_results[group_index]
+            for fpath in group.files:
+                if Path(fpath).name == file_name:
+                    file_path = fpath
+                    break
+            
+            if not file_path:
+                return
+            
+            # Select the item
+            self.duplicates_tree.selection_set(item)
+            
+            # Create context menu
+            context_menu = tk.Menu(self.root, tearoff=0)
+            context_menu.add_command(
+                label="Play Video",
+                command=lambda: self.play_video_file(file_path)
+            )
+            context_menu.add_command(
+                label="Browse Folder",
+                command=lambda: self.browse_to_file(file_path)
+            )
+            context_menu.add_separator()
+            context_menu.add_command(
+                label="Delete this file...",
+                command=lambda: self.delete_duplicate_file(item, file_path)
+            )
+            
+            # Show menu at cursor position
+            context_menu.tk_popup(event.x_root, event.y_root)
+            
+        except Exception as e:
+            logger.error(f"Error showing context menu: {repr(e)}")
+        finally:
+            # Clean up menu if it was created
+            if "context_menu" in locals():
+                try:
+                    context_menu.grab_release()
+                except Exception:
+                    # Best-effort cleanup; grab may have already been released
+                    pass
+    
+    def delete_duplicate_file(self, tree_item, file_path):
+        """Delete a duplicate file after confirmation."""
+        try:
+            # Show confirmation dialog with full path
+            result = messagebox.askyesno(
+                "Delete File",
+                f"Are you sure you want to delete this file?\n\n{file_path}\n\n"
+                f"This action cannot be undone!",
+                icon='warning'
+            )
+            
+            if not result:
+                return
+            
+            # Delete the file
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"Deleted file: {file_path}")
+                
+                # Get parent reference BEFORE deleting the tree item
+                parent = self.duplicates_tree.parent(tree_item)
+                
+                # Remove from tree view
+                self.duplicates_tree.delete(tree_item)
+                
+                # Update the parent group's file count
+                if parent:
+                    # Get remaining children
+                    children = self.duplicates_tree.get_children(parent)
+                    file_count = len(children)
+                    
+                    # Update parent values
+                    values = self.duplicates_tree.item(parent, 'values')
+                    if values:
+                        self.duplicates_tree.item(parent, values=(values[0], file_count, values[2]))
+                    
+                    # If only one file left in group, it's not a duplicate anymore
+                    if file_count <= 1:
+                        self.duplicates_tree.delete(parent)
+                
+                # Update duplicate_results
+                for group in self.duplicate_results[:]:
+                    if str(file_path) in [str(f) for f in group.files]:
+                        group.files = [f for f in group.files if str(f) != str(file_path)]
+                        # Remove thumbnail entry
+                        if str(file_path) in group.file_thumbnails:
+                            del group.file_thumbnails[str(file_path)]
+                        # Remove group if only one file left
+                        if len(group.files) <= 1:
+                            self.duplicate_results.remove(group)
+                        break
+                
+                # Update summary
+                self.dup_summary_label.config(
+                    text=f"Total Groups: {len(self.duplicate_results)} | "
+                         f"Total Duplicate Files: {sum(len(g.files) for g in self.duplicate_results)}"
+                )
+                
+                messagebox.showinfo("File Deleted", f"Successfully deleted:\n{file_path}")
+            else:
+                messagebox.showerror("File Not Found", f"File does not exist:\n{file_path}")
+                
+        except PermissionError:
+            logger.error(f"Permission denied deleting file: {file_path}")
+            messagebox.showerror("Permission Denied", 
+                               f"Cannot delete file (permission denied):\n{file_path}")
+        except Exception as e:
+            logger.error(f"Error deleting file: {repr(e)}")
+            messagebox.showerror("Delete Error", 
+                               f"Failed to delete file:\n{file_path}\n\nError: {repr(e)}")
+    
+    def play_video_file(self, file_path):
+        """Open video file with system default video player."""
+        try:
+            if not os.path.exists(file_path):
+                messagebox.showerror("File Not Found", f"File does not exist:\n{file_path}")
+                return
+            
+            system = platform.system()
+            if system == 'Windows':
+                # Windows: use os.startfile
+                os.startfile(file_path)
+            elif system == 'Darwin':
+                # macOS: use open command
+                subprocess.Popen(['open', file_path])
+            else:
+                # Linux: use xdg-open
+                subprocess.Popen(['xdg-open', file_path])
+            
+            logger.info(f"Opened video file: {file_path}")
+            
+        except Exception as e:
+            logger.error(f"Error opening video file: {repr(e)}")
+            messagebox.showerror("Open Error", 
+                               f"Failed to open video file:\n{file_path}\n\nError: {repr(e)}")
+    
+    def browse_to_file(self, file_path):
+        """Open file explorer and highlight the file."""
+        try:
+            if not os.path.exists(file_path):
+                messagebox.showerror("File Not Found", f"File does not exist:\n{file_path}")
+                return
+            
+            system = platform.system()
+            if system == 'Windows':
+                # Windows: use explorer with /select parameter to highlight the file
+                subprocess.Popen(['explorer', '/select,', os.path.normpath(file_path)])
+            elif system == 'Darwin':
+                # macOS: use open -R to reveal in Finder
+                subprocess.Popen(['open', '-R', file_path])
+            else:
+                # Linux: open the parent directory (highlighting not universally supported)
+                # Try to use file managers that support selection
+                parent_dir = os.path.dirname(file_path)
+                try:
+                    # Try nautilus (GNOME) with --select
+                    subprocess.Popen(['nautilus', '--select', file_path])
+                except FileNotFoundError:
+                    try:
+                        # Try dolphin (KDE) with --select
+                        subprocess.Popen(['dolphin', '--select', file_path])
+                    except FileNotFoundError:
+                        # Fallback: just open the directory
+                        subprocess.Popen(['xdg-open', parent_dir])
+            
+            logger.info(f"Opened folder for file: {file_path}")
+            
+        except Exception as e:
+            logger.error(f"Error opening folder: {repr(e)}")
+            messagebox.showerror("Browse Error", 
+                               f"Failed to open folder:\n{file_path}\n\nError: {repr(e)}")
             
     @staticmethod
     def format_size(size_bytes):

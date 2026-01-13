@@ -865,14 +865,14 @@ def validate_and_finalize(input_path, temp_output, final_output, preserve_origin
 
 def download_dependencies(progress_callback=None):
     """
-    Download HandBrakeCLI and ffprobe to ./dependencies directory.
+    Download HandBrakeCLI, ffprobe, and ffmpeg to ./dependencies directory.
     
     Args:
         progress_callback: Optional callback function to report progress.
                           Called with status messages as strings.
     
     Returns:
-        tuple: (handbrake_path, ffprobe_path) as strings, or (None, None) on failure
+        tuple: (handbrake_path, ffprobe_path, ffmpeg_path) as strings, or (None, None, None) on failure
     """
     try:
         system = platform.system()
@@ -890,25 +890,29 @@ def download_dependencies(progress_callback=None):
         if system == "Windows":
             handbrake_exe = "HandBrakeCLI.exe"
             ffprobe_exe = "ffprobe.exe"
+            ffmpeg_exe = "ffmpeg.exe"
         else:
             handbrake_exe = "HandBrakeCLI"
             ffprobe_exe = "ffprobe"
+            ffmpeg_exe = "ffmpeg"
         
         # Check if dependencies already exist
         handbrake_path = deps_dir / handbrake_exe
         ffprobe_path = deps_dir / ffprobe_exe
+        ffmpeg_path = deps_dir / ffmpeg_exe
         
-        if handbrake_path.exists() and ffprobe_path.exists():
+        if handbrake_path.exists() and ffprobe_path.exists() and ffmpeg_path.exists():
             # Validate existing dependencies
             handbrake_valid, _ = check_single_dependency(str(handbrake_path))
             ffprobe_valid, _ = check_single_dependency(str(ffprobe_path))
+            ffmpeg_valid, _ = check_single_dependency(str(ffmpeg_path))
             
-            if handbrake_valid and ffprobe_valid:
+            if handbrake_valid and ffprobe_valid and ffmpeg_valid:
                 msg = "Dependencies already exist and are valid. Skipping download."
                 if progress_callback:
                     progress_callback(msg)
                 logger.info(msg)
-                return (str(handbrake_path.resolve()), str(ffprobe_path.resolve()))
+                return (str(handbrake_path.resolve()), str(ffprobe_path.resolve()), str(ffmpeg_path.resolve()))
             else:
                 msg = "Existing dependencies are invalid. Re-downloading..."
                 if progress_callback:
@@ -991,7 +995,7 @@ def download_dependencies(progress_callback=None):
             msg = f"HandBrakeCLI extraction failed: {repr(e)}"
             if progress_callback:
                 progress_callback(msg)
-            return (None, None)
+            return (None, None, None)
         finally:
             if handbrake_archive.exists():
                 handbrake_archive.unlink()
@@ -1019,38 +1023,44 @@ def download_dependencies(progress_callback=None):
             if ffmpeg_archive.suffix == ".zip":
                 with zipfile.ZipFile(ffmpeg_archive, 'r') as zip_ref:
                     zip_ref.extractall(deps_dir / "ffmpeg_temp")
-                # Find ffprobe executable (often in bin subdirectory)
+                # Find ffprobe and ffmpeg executables (often in bin subdirectory)
                 ffprobe_found = False
+                ffmpeg_found = False
                 for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
-                    if ffprobe_exe in files:
+                    if ffprobe_exe in files and not ffprobe_found:
                         shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
                         ffprobe_found = True
-                        # Also copy ffmpeg if present
-                        ffmpeg_exe = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
-                        if ffmpeg_exe in files:
-                            shutil.copy2(Path(root) / ffmpeg_exe, deps_dir / ffmpeg_exe)
+                    if ffmpeg_exe in files and not ffmpeg_found:
+                        shutil.copy2(Path(root) / ffmpeg_exe, deps_dir / ffmpeg_exe)
+                        ffmpeg_found = True
+                    if ffprobe_found and ffmpeg_found:
                         break
                 if not ffprobe_found:
                     raise Exception(f"Could not find {ffprobe_exe} in downloaded archive")
+                if not ffmpeg_found:
+                    raise Exception(f"Could not find {ffmpeg_exe} in downloaded archive")
                 temp_dir = deps_dir / "ffmpeg_temp"
                 if temp_dir.exists():
                     shutil.rmtree(temp_dir)
             elif ffmpeg_archive.suffix in [".tar", ".xz", ".gz"]:
                 with tarfile.open(ffmpeg_archive, 'r:*') as tar_ref:
                     tar_ref.extractall(deps_dir / "ffmpeg_temp")
-                # Find ffprobe executable (often in bin subdirectory)
+                # Find ffprobe and ffmpeg executables (often in bin subdirectory)
                 ffprobe_found = False
+                ffmpeg_found = False
                 for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
-                    if ffprobe_exe in files:
+                    if ffprobe_exe in files and not ffprobe_found:
                         shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
                         ffprobe_found = True
-                        # Also copy ffmpeg if present
-                        ffmpeg_exe = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
-                        if ffmpeg_exe in files:
-                            shutil.copy2(Path(root) / ffmpeg_exe, deps_dir / ffmpeg_exe)
+                    if ffmpeg_exe in files and not ffmpeg_found:
+                        shutil.copy2(Path(root) / ffmpeg_exe, deps_dir / ffmpeg_exe)
+                        ffmpeg_found = True
+                    if ffprobe_found and ffmpeg_found:
                         break
                 if not ffprobe_found:
                     raise Exception(f"Could not find {ffprobe_exe} in downloaded archive")
+                if not ffmpeg_found:
+                    raise Exception(f"Could not find {ffmpeg_exe} in downloaded archive")
                 temp_dir = deps_dir / "ffmpeg_temp"
                 if temp_dir.exists():
                     shutil.rmtree(temp_dir)
@@ -1061,7 +1071,7 @@ def download_dependencies(progress_callback=None):
             msg = f"ffmpeg extraction failed: {repr(e)}"
             if progress_callback:
                 progress_callback(msg)
-            return (None, None)
+            return (None, None, None)
         finally:
             if ffmpeg_archive.exists():
                 ffmpeg_archive.unlink()
@@ -1072,20 +1082,22 @@ def download_dependencies(progress_callback=None):
                 os.chmod(handbrake_path, 0o755)
             if ffprobe_path.exists():
                 os.chmod(ffprobe_path, 0o755)
+            if ffmpeg_path.exists():
+                os.chmod(ffmpeg_path, 0o755)
         
         msg = f"Dependencies downloaded successfully to {deps_dir}"
         if progress_callback:
             progress_callback(msg)
         logger.info(msg)
         
-        return (str(handbrake_path.resolve()), str(ffprobe_path.resolve()))
+        return (str(handbrake_path.resolve()), str(ffprobe_path.resolve()), str(ffmpeg_path.resolve()))
         
     except Exception as e:
         logger.error(f"Download dependencies error: {repr(e)}")
         msg = f"Failed to download dependencies: {repr(e)}"
         if progress_callback:
             progress_callback(msg)
-        return (None, None)
+        return (None, None, None)
 
 
 def main():

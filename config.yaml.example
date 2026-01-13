@@ -25,6 +25,12 @@ dependencies:
   #   Linux/macOS: "/usr/bin/ffprobe"
   #   Windows: "C:\\ffmpeg\\bin\\ffprobe.exe"
   ffprobe: "ffprobe"
+  
+  # Path to ffmpeg executable (required for duplicate detection)
+  # Examples:
+  #   Linux/macOS: "/usr/bin/ffmpeg"
+  #   Windows: "C:\\ffmpeg\\bin\\ffmpeg.exe"
+  ffmpeg: "ffmpeg"
 
 # Logging configuration (optional)
 logging:
