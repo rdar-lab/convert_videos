@@ -1418,6 +1418,15 @@ class VideoConverterGUI:
             # Create context menu
             context_menu = tk.Menu(self.root, tearoff=0)
             context_menu.add_command(
+                label="Play Video",
+                command=lambda: self.play_video_file(file_path)
+            )
+            context_menu.add_command(
+                label="Browse Folder",
+                command=lambda: self.browse_to_file(file_path)
+            )
+            context_menu.add_separator()
+            context_menu.add_command(
                 label="Delete this file...",
                 command=lambda: self.delete_duplicate_file(item, file_path)
             )
@@ -1504,6 +1513,73 @@ class VideoConverterGUI:
             logger.error(f"Error deleting file: {repr(e)}")
             messagebox.showerror("Delete Error", 
                                f"Failed to delete file:\n{file_path}\n\nError: {repr(e)}")
+    
+    def play_video_file(self, file_path):
+        """Open video file with system default video player."""
+        try:
+            if not os.path.exists(file_path):
+                messagebox.showerror("File Not Found", f"File does not exist:\n{file_path}")
+                return
+            
+            import platform
+            import subprocess
+            
+            system = platform.system()
+            if system == 'Windows':
+                # Windows: use os.startfile
+                os.startfile(file_path)
+            elif system == 'Darwin':
+                # macOS: use open command
+                subprocess.Popen(['open', file_path])
+            else:
+                # Linux: use xdg-open
+                subprocess.Popen(['xdg-open', file_path])
+            
+            logger.info(f"Opened video file: {file_path}")
+            
+        except Exception as e:
+            logger.error(f"Error opening video file: {repr(e)}")
+            messagebox.showerror("Open Error", 
+                               f"Failed to open video file:\n{file_path}\n\nError: {repr(e)}")
+    
+    def browse_to_file(self, file_path):
+        """Open file explorer and highlight the file."""
+        try:
+            if not os.path.exists(file_path):
+                messagebox.showerror("File Not Found", f"File does not exist:\n{file_path}")
+                return
+            
+            import platform
+            import subprocess
+            
+            system = platform.system()
+            if system == 'Windows':
+                # Windows: use explorer with /select parameter to highlight the file
+                subprocess.Popen(['explorer', '/select,', os.path.normpath(file_path)])
+            elif system == 'Darwin':
+                # macOS: use open -R to reveal in Finder
+                subprocess.Popen(['open', '-R', file_path])
+            else:
+                # Linux: open the parent directory (highlighting not universally supported)
+                # Try to use file managers that support selection
+                parent_dir = os.path.dirname(file_path)
+                try:
+                    # Try nautilus (GNOME) with --select
+                    subprocess.Popen(['nautilus', '--select', file_path])
+                except FileNotFoundError:
+                    try:
+                        # Try dolphin (KDE) with --select
+                        subprocess.Popen(['dolphin', '--select', file_path])
+                    except FileNotFoundError:
+                        # Fallback: just open the directory
+                        subprocess.Popen(['xdg-open', parent_dir])
+            
+            logger.info(f"Opened folder for file: {file_path}")
+            
+        except Exception as e:
+            logger.error(f"Error opening folder: {repr(e)}")
+            messagebox.showerror("Browse Error", 
+                               f"Failed to open folder:\n{file_path}\n\nError: {repr(e)}")
             
     @staticmethod
     def format_size(size_bytes):
