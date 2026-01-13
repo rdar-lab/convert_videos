@@ -30,13 +30,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Global dependency paths (initialized in main())
-DEPENDENCY_PATHS = {
-    'handbrake': 'HandBrakeCLI',
-    'ffprobe': 'ffprobe'
-}
-
-
 # Constants
 SUPPORTED_ENCODERS = ['x265', 'x265_10bit', 'nvenc_hevc']
 SUPPORTED_FORMATS = ['mkv', 'mp4']
@@ -54,6 +47,13 @@ SIZE_MULTIPLIERS = {
 }
 DEFAULT_MIN_FILE_SIZE_BYTES = 1024 ** 3  # 1GB
 FILE_SIZE_PATTERN = re.compile(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$', re.IGNORECASE)
+
+
+# Module-level variable for dependency paths (not a constant - updated from config in main())
+DEPENDENCY_PATHS = {
+    'handbrake': 'HandBrakeCLI',
+    'ffprobe': 'ffprobe'
+}
 
 
 def validate_encoder(encoder_type):
