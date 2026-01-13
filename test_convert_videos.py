@@ -868,7 +868,10 @@ class TestLoggingFunctionality(unittest.TestCase):
             self.assertTrue(log_path.exists())
     
     def test_setup_logging_env_variable(self):
-        """Test that setup_logging uses environment variable when set."""
+        """Test that environment variable is handled by main() function logic.
+        
+        This test simulates what main() does: check env var and pass to setup_logging.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = Path(tmpdir) / 'env_log.log'
             
@@ -877,8 +880,9 @@ class TestLoggingFunctionality(unittest.TestCase):
             try:
                 os.environ['VIDEO_CONVERTER_LOG_FILE'] = str(log_path)
                 
-                # Setup logging (should use env var)
-                result_path = convert_videos.setup_logging()
+                # Simulate main() logic: check env var and pass to setup_logging
+                env_log = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
+                result_path = convert_videos.setup_logging(env_log)
                 
                 # Verify the env var path was used
                 self.assertEqual(result_path, str(log_path))

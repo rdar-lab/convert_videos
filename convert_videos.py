@@ -65,29 +65,24 @@ def setup_logging(log_file_path=None):
     """Setup logging with both console and file output.
     
     Args:
-        log_file_path: Path to log file. If None, checks environment variable
-                      VIDEO_CONVERTER_LOG_FILE, then defaults to temp directory.
+        log_file_path: Path to log file. If None, defaults to temp directory.
     
     Returns:
         str: Path to the log file being used
     
     Note:
-        The main() function establishes priority: command-line arg > env var > config file > default.
-        This function receives the resolved log_file_path after main() has applied that priority,
-        then additionally checks the environment variable if log_file_path is still None.
+        Priority for log file path is handled by main():
+        1. Command line argument (--log-file)
+        2. Environment variable (VIDEO_CONVERTER_LOG_FILE)
+        3. Configuration file (logging.log_file)
+        4. Default (temp directory)
+        
+        This function receives the final resolved path or None (for default).
     """
-    # Determine log file path:
-    # If log_file_path is provided (from command line or config), use it
-    # Otherwise check environment variable
-    # Finally default to temp directory
+    # Use provided path or default to temp directory
     if log_file_path is None:
-        env_log_path = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
-        if env_log_path:
-            log_file_path = env_log_path
-        else:
-            # Default to temp directory
-            temp_dir = tempfile.gettempdir()
-            log_file_path = os.path.join(temp_dir, 'convert_videos.log')
+        temp_dir = tempfile.gettempdir()
+        log_file_path = os.path.join(temp_dir, 'convert_videos.log')
     
     # Ensure log directory exists
     log_file = Path(log_file_path)
@@ -1053,6 +1048,10 @@ Examples:
     # 4. Default (temp directory)
     log_file_path = args.log_file
     if not log_file_path:
+        # Check environment variable
+        log_file_path = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
+    if not log_file_path:
+        # Check config file
         log_config = config.get('logging', {})
         if isinstance(log_config, dict):
             log_file_path = log_config.get('log_file')
