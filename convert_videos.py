@@ -647,7 +647,7 @@ def download_dependencies(progress_callback=None):
                 if progress_callback:
                     progress_callback(msg)
                 logger.info(msg)
-                return (str(handbrake_path), str(ffprobe_path))
+                return (str(handbrake_path.resolve()), str(ffprobe_path.resolve()))
             else:
                 msg = "Existing dependencies are invalid. Re-downloading..."
                 if progress_callback:
@@ -811,7 +811,7 @@ def download_dependencies(progress_callback=None):
             progress_callback(msg)
         logger.info(msg)
         
-        return (str(handbrake_path), str(ffprobe_path))
+        return (str(handbrake_path.resolve()), str(ffprobe_path.resolve()))
         
     except Exception as e:
         logger.error(f"Download dependencies error: {repr(e)}")
