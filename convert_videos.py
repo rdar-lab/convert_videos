@@ -456,11 +456,11 @@ def load_config(config_path=None):
     # This checks for bundled executables in PyInstaller bundles and resolves paths
     config['dependencies']['handbrake'] = find_dependency_path(
         'HandBrakeCLI', 
-        config['dependencies'].get('handbrake', 'HandBrakeCLI')
+        config['dependencies'].get('handbrake')
     )
     config['dependencies']['ffprobe'] = find_dependency_path(
         'ffprobe',
-        config['dependencies'].get('ffprobe', 'ffprobe')
+        config['dependencies'].get('ffprobe')
     )
     
     return config
