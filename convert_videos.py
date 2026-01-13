@@ -241,6 +241,26 @@ def check_dependencies(dependency_paths=None):
         sys.exit(1)
 
 
+def check_single_dependency(command):
+    """Check if a single dependency command is available.
+    
+    Args:
+        command: Command name or path to check
+        
+    Returns:
+        True if command is found, False otherwise
+    """
+    try:
+        subprocess.run([command, '--version'], 
+                      stdout=subprocess.PIPE, 
+                      stderr=subprocess.PIPE,
+                      check=True,
+                      timeout=5)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
 def get_codec(file_path, dependency_config=None):
     """Get the video codec of a file using ffprobe.
     

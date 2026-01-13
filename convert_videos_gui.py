@@ -154,14 +154,16 @@ class VideoConverterGUI:
         dependency_config = self.config.get('dependencies', {})
         
         ttk.Label(deps_frame, text="HandBrakeCLI:").grid(row=0, column=0, sticky='w', pady=5)
-        self.handbrake_entry = ttk.Entry(deps_frame, width=50)
+        self.handbrake_entry = ttk.Entry(deps_frame, width=40)
         self.handbrake_entry.grid(row=0, column=1, padx=5, pady=5)
         self.handbrake_entry.insert(0, dependency_config.get('handbrake') or 'HandBrakeCLI')
+        ttk.Button(deps_frame, text="Browse...", command=self.browse_handbrake).grid(row=0, column=2, pady=5)
         
         ttk.Label(deps_frame, text="ffprobe:").grid(row=1, column=0, sticky='w', pady=5)
-        self.ffprobe_entry = ttk.Entry(deps_frame, width=50)
+        self.ffprobe_entry = ttk.Entry(deps_frame, width=40)
         self.ffprobe_entry.grid(row=1, column=1, padx=5, pady=5)
         self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
+        ttk.Button(deps_frame, text="Browse...", command=self.browse_ffprobe).grid(row=1, column=2, pady=5)
         
         # Other options
         options_frame = ttk.LabelFrame(scrollable_frame, text="Other Options", padding=10)
@@ -291,6 +293,26 @@ class VideoConverterGUI:
         if directory:
             self.dir_entry.delete(0, tk.END)
             self.dir_entry.insert(0, directory)
+    
+    def browse_handbrake(self):
+        """Open file browser for HandBrakeCLI executable."""
+        file_path = filedialog.askopenfilename(
+            title="Select HandBrakeCLI executable",
+            filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
+        )
+        if file_path:
+            self.handbrake_entry.delete(0, tk.END)
+            self.handbrake_entry.insert(0, file_path)
+    
+    def browse_ffprobe(self):
+        """Open file browser for ffprobe executable."""
+        file_path = filedialog.askopenfilename(
+            title="Select ffprobe executable",
+            filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
+        )
+        if file_path:
+            self.ffprobe_entry.delete(0, tk.END)
+            self.ffprobe_entry.insert(0, file_path)
             
     def validate_config(self):
         """Validate the current configuration."""
@@ -335,11 +357,11 @@ class VideoConverterGUI:
         ffprobe_path = self.ffprobe_entry.get().strip()
         
         if handbrake_path:
-            if not convert_videos.check_dependency(handbrake_path):
+            if not convert_videos.check_single_dependency(handbrake_path):
                 errors.append(f"HandBrakeCLI not found: {handbrake_path}")
         
         if ffprobe_path:
-            if not convert_videos.check_dependency(ffprobe_path):
+            if not convert_videos.check_single_dependency(ffprobe_path):
                 errors.append(f"ffprobe not found: {ffprobe_path}")
         
         # Display results
