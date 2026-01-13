@@ -15,6 +15,7 @@ import sys
 import subprocess
 import argparse
 import logging
+import logging.handlers
 from pathlib import Path
 import time
 import yaml
@@ -24,6 +25,7 @@ import urllib.request
 import tarfile
 import zipfile
 import shutil
+import tempfile
 
 
 # Configure logging
@@ -52,6 +54,118 @@ SIZE_MULTIPLIERS = {
 }
 DEFAULT_MIN_FILE_SIZE_BYTES = 1024 ** 3  # 1GB
 FILE_SIZE_PATTERN = re.compile(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$', re.IGNORECASE)
+
+
+def setup_logging(log_file_path=None):
+    """Setup logging with both console and file output.
+    
+    Args:
+        log_file_path: Path to log file. If None, defaults to temp directory.
+                      Can be overridden by environment variable VIDEO_CONVERTER_LOG_FILE.
+    
+    Returns:
+        str: Path to the log file being used
+    """
+    # Determine log file path with priority:
+    # 1. Environment variable
+    # 2. Function parameter
+    # 3. Default to temp directory
+    env_log_path = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
+    if env_log_path:
+        log_file_path = env_log_path
+    elif log_file_path is None:
+        # Default to temp directory
+        temp_dir = tempfile.gettempdir()
+        log_file_path = os.path.join(temp_dir, 'convert_videos.log')
+    
+    # Ensure log directory exists
+    log_file = Path(log_file_path)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Get the root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # Remove existing handlers to avoid duplicates
+    root_logger.handlers.clear()
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+    
+    # File handler with rotation (10MB max, keep 5 backups)
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file_path,
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+    
+    logger.info(f"Logging to file: {log_file_path}")
+    
+    return str(log_file_path)
+
+
+def run_command(command_args, **kwargs):
+    """Run a subprocess command and log all details.
+    
+    Args:
+        command_args: List of command arguments
+        **kwargs: Additional arguments to pass to subprocess.run
+    
+    Returns:
+        subprocess.CompletedProcess: Result of the command execution
+    """
+    logger.info(f"Running command: {' '.join(str(arg) for arg in command_args)}")
+    
+    # Ensure we capture output for logging
+    if 'stdout' not in kwargs:
+        kwargs['stdout'] = subprocess.PIPE
+    if 'stderr' not in kwargs:
+        kwargs['stderr'] = subprocess.PIPE
+    if 'text' not in kwargs:
+        kwargs['text'] = True
+    
+    try:
+        result = subprocess.run(command_args, **kwargs)
+        
+        # Log stdout if present
+        if result.stdout:
+            logger.info(f"Command stdout: {result.stdout.strip()}")
+        
+        # Log stderr if present
+        if result.stderr:
+            if result.returncode == 0:
+                # Some tools write normal output to stderr
+                logger.info(f"Command stderr: {result.stderr.strip()}")
+            else:
+                logger.error(f"Command stderr: {result.stderr.strip()}")
+        
+        # Log exit code
+        logger.info(f"Command exit code: {result.returncode}")
+        
+        return result
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed with exit code {e.returncode}")
+        if e.stdout:
+            logger.error(f"Command stdout: {e.stdout.strip()}")
+        if e.stderr:
+            logger.error(f"Command stderr: {e.stderr.strip()}")
+        raise
+    except Exception as e:
+        logger.error(f"Command execution error: {type(e).__name__}: {e}")
+        raise
 
 
 def validate_encoder(encoder_type):
@@ -156,6 +270,9 @@ def load_config(config_path=None):
             'handbrake': 'HandBrakeCLI',
             'ffprobe': 'ffprobe'
         },
+        'logging': {
+            'log_file': None  # None means default to temp directory
+        },
         'remove_original_files': False,
         'loop': False,
         'dry_run': False
@@ -205,6 +322,18 @@ def load_config(config_path=None):
                 # Invalid dependencies type; fall back to defaults to avoid runtime errors
                 config['dependencies'] = default_config['dependencies']
         
+        # Merge logging settings if present, handling None and type safety
+        if 'logging' in user_config:
+            if user_config['logging'] is None:
+                # User explicitly set logging: null; restore default logging config
+                config['logging'] = default_config['logging']
+            elif isinstance(user_config['logging'], dict):
+                # Merge user-provided logging settings into the default logging config
+                config['logging'] = {**default_config['logging'], **user_config['logging']}
+            else:
+                # Invalid logging type; fall back to defaults to avoid runtime errors
+                config['logging'] = default_config['logging']
+        
         logger.info(f"Loaded configuration from {config_path}")
         return config
     except (OSError, IOError, yaml.YAMLError) as e:
@@ -234,12 +363,7 @@ def check_dependencies(dependency_paths=None):
     for name, path in dependencies.items():
         try:
             command_args = [path, '--version']
-            logger.info(f"Running {command_args}")
-
-            subprocess.run(command_args, 
-                          stdout=subprocess.PIPE, 
-                          stderr=subprocess.PIPE,
-                          check=True)
+            run_command(command_args, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
             missing.append(f"{name} (path: {path})")
     
@@ -266,13 +390,7 @@ def check_single_dependency(command):
     for version_flag in ['--version', '-version']:
         try:
             command_args = [command, version_flag]
-            logger.info(f"Running {command_args}")
-
-            subprocess.run(command_args,
-                          stdout=subprocess.PIPE, 
-                          stderr=subprocess.PIPE,
-                          check=True,
-                          timeout=5)
+            run_command(command_args, check=True, timeout=5)
             return True, None
         except FileNotFoundError:
             return False, "not_found"
@@ -301,16 +419,9 @@ def get_codec(file_path, dependency_config=None):
     command_args = [ffprobe_path, '-v', 'error', '-select_streams', 'v:0', 
              '-show_entries', 'stream=codec_name',
              '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)]
-
-    logger.info(f"Running {command_args}")
     
     try:
-        result = subprocess.run(command_args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True
-        )
+        result = run_command(command_args, check=True)
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
         logger.error(f"Error getting codec for {file_path}: {e}")
@@ -330,13 +441,10 @@ def get_duration(file_path, dependency_config=None):
     ffprobe_path = dependency_config.get('ffprobe', 'ffprobe')
     
     try:
-        result = subprocess.run(
+        result = run_command(
             [ffprobe_path, '-v', 'error',
              '-show_entries', 'format=duration',
              '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
             check=True
         )
         duration_str = result.stdout.strip()
@@ -522,19 +630,15 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         if sys.platform == 'win32':
             # Windows: Use BELOW_NORMAL_PRIORITY_CLASS (0x00004000)
             BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
-            logger.info(f"Running {cmd}")
-            subprocess.run(cmd, check=True, 
-                          creationflags=BELOW_NORMAL_PRIORITY_CLASS)
+            run_command(cmd, check=True, creationflags=BELOW_NORMAL_PRIORITY_CLASS)
         else:
             # Linux/Unix: Try to use nice if available, otherwise run without it
             try:
                 command_args = ['nice', '-n', '10'] + cmd
-                logger.info(f"Running {command_args}")
-                subprocess.run(command_args, check=True)
+                run_command(command_args, check=True)
             except FileNotFoundError:
                 # nice not available, run without it
-                logger.info(f"Running {cmd}")
-                subprocess.run(cmd, check=True)
+                run_command(cmd, check=True)
         
         # Validate and finalize
         return validate_and_finalize(input_path, temp_output, output_path, preserve_original, dependency_config)
@@ -896,6 +1000,8 @@ Examples:
     parser.add_argument('--auto-download-dependencies',
                        action='store_true',
                        help='Automatically download dependencies if not found (HandBrakeCLI, ffprobe)')
+    parser.add_argument('--log-file',
+                       help='Path to log file (default: temp directory, can be set via VIDEO_CONVERTER_LOG_FILE env var)')
     
     args = parser.parse_args()
     
@@ -924,6 +1030,19 @@ Examples:
     
     # Load configuration file
     config = load_config(args.config)
+    
+    # Setup logging with priority:
+    # 1. Command line argument
+    # 2. Environment variable
+    # 3. Config file
+    # 4. Default (temp directory)
+    log_file_path = args.log_file
+    if not log_file_path:
+        log_config = config.get('logging', {})
+        if isinstance(log_config, dict):
+            log_file_path = log_config.get('log_file')
+    
+    setup_logging(log_file_path)
     
     # Command line arguments override config file settings
     target_directory = args.directory or config.get('directory')
