@@ -374,6 +374,11 @@ def find_eligible_files(target_dir, min_size_bytes=None, dependency_config=None)
                 if file_path.suffix == '.fail' or '.fail_' in file_path.name:
                     continue
                 
+                # Skip files marked as already processed originals
+                # Check for .orig.* pattern (e.g., video.orig.mp4)
+                if '.orig.' in file_path.name:
+                    continue
+                
                 # Check file size
                 file_size = file_path.stat().st_size
                 if file_size < min_size_bytes:
@@ -573,13 +578,31 @@ def validate_and_finalize(input_path, temp_output, final_output, preserve_origin
     
     diff = abs(src_duration - out_duration)
     if diff <= 1:
-        # Success - move temp to final and optionally remove original
+        # Success - move temp to final and optionally remove/rename original
         temp_output.rename(final_output)
         if not preserve_original:
             input_path.unlink()
             logger.info(f"✅ Successfully converted: {final_output}")
         else:
-            logger.info(f"✅ Successfully converted (original preserved): {final_output}")
+            # Rename original to .orig.<ext> to mark it as processed
+            # This prevents reprocessing the same file
+            original_ext = input_path.suffix  # e.g., ".mp4"
+            orig_name = f"{input_path.stem}.orig{original_ext}"  # e.g., "video.orig.mp4"
+            orig_path = input_path.with_name(orig_name)
+            
+            # Handle name collisions
+            counter = 1
+            while orig_path.exists():
+                orig_name = f"{input_path.stem}.orig.{counter}{original_ext}"
+                orig_path = input_path.with_name(orig_name)
+                counter += 1
+            
+            try:
+                input_path.rename(orig_path)
+                logger.info(f"✅ Successfully converted (original renamed to {orig_path.name}): {final_output}")
+            except OSError as e:
+                logger.error(f"Failed to rename original file to {orig_path}: {repr(e)}")
+                logger.info(f"✅ Successfully converted (original preserved): {final_output}")
         return True
     else:
         # Duration mismatch - keep both files but mark original as failed
