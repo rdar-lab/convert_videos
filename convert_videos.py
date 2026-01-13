@@ -84,9 +84,23 @@ def setup_logging(log_file_path=None):
         temp_dir = tempfile.gettempdir()
         log_file_path = os.path.join(temp_dir, 'convert_videos.log')
     
-    # Ensure log directory exists
-    log_file = Path(log_file_path)
-    log_file.parent.mkdir(parents=True, exist_ok=True)
+    # Ensure log directory exists with error handling
+    try:
+        log_file = Path(log_file_path)
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        # Fall back to temp directory if we can't create the specified path
+        print(f"Warning: Cannot create log directory at {log_file_path}: {e}", file=sys.stderr)
+        print(f"Falling back to temp directory", file=sys.stderr)
+        temp_dir = tempfile.gettempdir()
+        log_file_path = os.path.join(temp_dir, 'convert_videos.log')
+        log_file = Path(log_file_path)
+        try:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+        except (OSError, PermissionError) as e2:
+            print(f"Error: Cannot create log directory in temp: {e2}", file=sys.stderr)
+            print(f"Logging to console only", file=sys.stderr)
+            log_file_path = None  # Signal to skip file handler
     
     # Get the root logger
     root_logger = logging.getLogger()
@@ -108,20 +122,29 @@ def setup_logging(log_file_path=None):
     root_logger.addHandler(console_handler)
     
     # File handler with rotation (10MB max, keep 5 backups)
-    file_handler = logging.handlers.RotatingFileHandler(
-        log_file_path,
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=5,
-        encoding='utf-8'
-    )
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(formatter)
-    root_logger.addHandler(file_handler)
+    # Only add if we have a valid log path
+    if log_file_path:
+        try:
+            file_handler = logging.handlers.RotatingFileHandler(
+                log_file_path,
+                maxBytes=10 * 1024 * 1024,  # 10MB
+                backupCount=5,
+                encoding='utf-8'
+            )
+            file_handler.setLevel(logging.INFO)
+            file_handler.setFormatter(formatter)
+            root_logger.addHandler(file_handler)
+            
+            # Use root logger after setup is complete
+            root_logger.info(f"Logging to file: {log_file_path}")
+        except (OSError, PermissionError) as e:
+            root_logger.warning(f"Cannot create log file at {log_file_path}: {e}")
+            root_logger.warning("Logging to console only")
+            log_file_path = None
+    else:
+        root_logger.info("Logging to console only (file logging unavailable)")
     
-    # Use root logger after setup is complete
-    root_logger.info(f"Logging to file: {log_file_path}")
-    
-    return str(log_file_path)
+    return str(log_file_path) if log_file_path else None
 
 
 def run_command(command_args, **kwargs):
@@ -136,6 +159,9 @@ def run_command(command_args, **kwargs):
     Returns:
         subprocess.CompletedProcess: Result of the command execution
     """
+    # Maximum length for logged output to prevent huge log files
+    MAX_OUTPUT_LENGTH = 2000
+    
     logger.info(f"Running command: {' '.join(str(arg) for arg in command_args)}")
     
     # Capture output for logging unless explicitly disabled
@@ -150,17 +176,28 @@ def run_command(command_args, **kwargs):
     try:
         result = subprocess.run(command_args, **kwargs)
         
-        # Log stdout if present and captured
+        # Log stdout if present and captured, with truncation for large output
         if result.stdout:
-            logger.info(f"Command stdout: {result.stdout.strip()}")
+            stdout_stripped = result.stdout.strip()
+            if len(stdout_stripped) > MAX_OUTPUT_LENGTH:
+                logger.info(f"Command stdout (truncated to {MAX_OUTPUT_LENGTH} chars): {stdout_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stdout_stripped)} chars]")
+            else:
+                logger.info(f"Command stdout: {stdout_stripped}")
         
-        # Log stderr if present and captured
+        # Log stderr if present and captured, with truncation for large output
         if result.stderr:
+            stderr_stripped = result.stderr.strip()
             if result.returncode == 0:
                 # Some tools write normal output to stderr
-                logger.info(f"Command stderr: {result.stderr.strip()}")
+                if len(stderr_stripped) > MAX_OUTPUT_LENGTH:
+                    logger.info(f"Command stderr (truncated to {MAX_OUTPUT_LENGTH} chars): {stderr_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stderr_stripped)} chars]")
+                else:
+                    logger.info(f"Command stderr: {stderr_stripped}")
             else:
-                logger.error(f"Command stderr: {result.stderr.strip()}")
+                if len(stderr_stripped) > MAX_OUTPUT_LENGTH:
+                    logger.error(f"Command stderr (truncated to {MAX_OUTPUT_LENGTH} chars): {stderr_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stderr_stripped)} chars]")
+                else:
+                    logger.error(f"Command stderr: {stderr_stripped}")
         
         # Log exit code
         logger.info(f"Command exit code: {result.returncode}")
@@ -169,9 +206,17 @@ def run_command(command_args, **kwargs):
     except subprocess.CalledProcessError as e:
         logger.error(f"Command failed with exit code {e.returncode}")
         if e.stdout:
-            logger.error(f"Command stdout: {e.stdout.strip()}")
+            stdout_stripped = e.stdout.strip()
+            if len(stdout_stripped) > MAX_OUTPUT_LENGTH:
+                logger.error(f"Command stdout (truncated to {MAX_OUTPUT_LENGTH} chars): {stdout_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stdout_stripped)} chars]")
+            else:
+                logger.error(f"Command stdout: {stdout_stripped}")
         if e.stderr:
-            logger.error(f"Command stderr: {e.stderr.strip()}")
+            stderr_stripped = e.stderr.strip()
+            if len(stderr_stripped) > MAX_OUTPUT_LENGTH:
+                logger.error(f"Command stderr (truncated to {MAX_OUTPUT_LENGTH} chars): {stderr_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stderr_stripped)} chars]")
+            else:
+                logger.error(f"Command stderr: {stderr_stripped}")
         raise
     except Exception as e:
         logger.error(f"Command execution error: {type(e).__name__}: {e}")
@@ -1022,6 +1067,13 @@ Examples:
     # Background mode otherwise
     launch_gui = args.gui or (len(sys.argv) == 1 and not args.background)
     
+    # Setup early logging to capture all events
+    # Priority: CLI arg > env var > config file (loaded later) > default
+    # We'll reconfigure logging after loading config if needed
+    early_log_path = args.log_file or os.environ.get('VIDEO_CONVERTER_LOG_FILE')
+    if early_log_path:
+        setup_logging(early_log_path)
+    
     if launch_gui and not args.background:
         # Launch GUI mode
         try:
@@ -1041,11 +1093,8 @@ Examples:
     # Load configuration file
     config = load_config(args.config)
     
-    # Setup logging with priority:
-    # 1. Command line argument
-    # 2. Environment variable
-    # 3. Config file
-    # 4. Default (temp directory)
+    # Reconfigure logging if config file specifies a different path
+    # Priority: CLI arg > env var > config file > default
     log_file_path = args.log_file
     if not log_file_path:
         # Check environment variable
@@ -1056,6 +1105,7 @@ Examples:
         if isinstance(log_config, dict):
             log_file_path = log_config.get('log_file')
     
+    # Setup or reconfigure logging with final resolved path
     setup_logging(log_file_path)
     
     # Command line arguments override config file settings
