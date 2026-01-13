@@ -21,12 +21,21 @@ import sys
 import platform
 import subprocess
 import urllib.request
+import urllib.error
 import tarfile
 import zipfile
 import shutil
 import argparse
 from pathlib import Path
 import tempfile
+
+
+# Version constants for external tools
+HANDBRAKE_VERSION = '1.7.2'
+FFMPEG_VERSION = '6.1'
+
+# Documentation files to include in distribution
+DOCS_TO_INCLUDE = ['README.md', 'LICENSE', 'config.yaml.example', 'BUILD.md']
 
 
 def get_platform():
@@ -62,7 +71,7 @@ def download_file(url, dest_path):
                 shutil.copyfileobj(response, out_file)
         print(f"Downloaded to {dest_path}")
         return True
-    except Exception as e:
+    except (urllib.error.URLError, OSError, IOError) as e:
         print(f"Error downloading {url}: {e}")
         return False
 
@@ -89,9 +98,9 @@ def download_handbrake(platform_name, download_dir):
     # HandBrake CLI download URLs
     # Note: These are examples. Update with actual stable release URLs
     urls = {
-        'windows': 'https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-win-x86_64.zip',
-        'linux': 'https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.flatpak',  # Alternative: build from source
-        'macos': 'https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.dmg'
+        'windows': f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-win-x86_64.zip',
+        'linux': f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-x86_64.flatpak',  # Alternative: build from source
+        'macos': f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-x86_64.dmg'
     }
     
     if platform_name not in urls:
@@ -124,10 +133,11 @@ def download_ffmpeg(platform_name, download_dir):
     ffmpeg_dir.mkdir(exist_ok=True)
     
     # FFmpeg download URLs (static builds)
+    # Note: Windows and Linux use latest release, macOS uses versioned
     urls = {
-        'windows': 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
-        'linux': 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz',
-        'macos': 'https://evermeet.cx/ffmpeg/ffmpeg-6.1.zip'  # Example, update as needed
+        'windows': 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',  # Latest stable
+        'linux': 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz',  # Latest stable
+        'macos': f'https://evermeet.cx/ffmpeg/ffmpeg-{FFMPEG_VERSION}.zip'  # Versioned release
     }
     
     if platform_name not in urls:
@@ -267,8 +277,7 @@ def create_distribution_package(platform_name):
     shutil.copy2(exe_path, package_dir / exe_name)
     
     # Copy documentation files
-    docs = ['README.md', 'LICENSE', 'config.yaml.example']
-    for doc in docs:
+    for doc in DOCS_TO_INCLUDE:
         if Path(doc).exists():
             shutil.copy2(doc, package_dir / doc)
     
@@ -349,7 +358,8 @@ def main():
         print("\nCreating distribution package...")
         create_distribution_package(target_platform)
         print("\n✓ Build completed successfully!")
-        print(f"\nExecutable location: dist/convert_videos{'exe' if target_platform == 'windows' else ''}")
+        exe_extension = '.exe' if target_platform == 'windows' else ''
+        print(f"\nExecutable location: dist/convert_videos{exe_extension}")
         print(f"Distribution package: dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
     else:
         print("\n✗ Build failed!")
