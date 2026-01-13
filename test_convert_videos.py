@@ -10,6 +10,7 @@ from unittest.mock import patch, MagicMock
 import tempfile
 from pathlib import Path
 import yaml
+import logging
 
 # Import the module to test
 import convert_videos
@@ -840,7 +841,6 @@ class TestLoggingFunctionality(unittest.TestCase):
     
     def _close_logging_handlers(self):
         """Close all logging handlers to release file locks (needed for Windows)."""
-        import logging
         root_logger = logging.getLogger()
         handlers = root_logger.handlers[:]
         for handler in handlers:
