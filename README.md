@@ -132,6 +132,26 @@ python convert_videos.py --config config.yaml --dry-run /custom/path
 
 ## Installation & Usage
 
+### Portable Executable (Recommended for Easy Setup)
+
+Pre-built portable executables are available for Windows, Linux, and macOS from the [Releases page](https://github.com/rdar-lab/convert_videos/releases).
+
+**Benefits:**
+- No need to install Python, FFmpeg, or HandBrakeCLI
+- All dependencies bundled in a single executable
+- Works out of the box on any system
+
+**Download and run:**
+1. Download the appropriate package for your platform from [Releases](https://github.com/rdar-lab/convert_videos/releases)
+2. Extract the archive
+3. Run the executable:
+   - Linux/macOS: `./convert_videos`
+   - Windows: `convert_videos.exe`
+
+The portable executable supports all the same options as the Python script.
+
+**Building from source:** See [BUILD.md](BUILD.md) for instructions on building your own portable executable.
+
 ### Windows (Without Docker)
 
 See **[WINDOWS_INSTALL.md](WINDOWS_INSTALL.md)** for detailed Windows installation instructions.
