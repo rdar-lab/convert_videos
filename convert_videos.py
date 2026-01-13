@@ -570,16 +570,16 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python convert_videos.py /path/to/videos
-  python convert_videos.py --dry-run C:\\Videos
-  python convert_videos.py --loop /path/to/videos
+  python convert_videos.py                          # Launch GUI (default)
+  python convert_videos.py --background /path/to/videos
+  python convert_videos.py --background --dry-run C:\\Videos
+  python convert_videos.py --background --loop /path/to/videos
   python convert_videos.py --config config.yaml
-  python convert_videos.py --headed
         """
     )
     parser.add_argument('directory', 
                        nargs='?',  # Optional to allow config-only usage
-                       help='Directory to scan for video files (optional; can be set in config file)')
+                       help='Directory to scan for video files (optional; can be set in config file or GUI)')
     parser.add_argument('--config',
                        help='Path to configuration file (default: config.yaml)')
     parser.add_argument('--dry-run', 
@@ -591,21 +591,23 @@ Examples:
     parser.add_argument('--preserve-original', 
                        action='store_true',
                        help='Keep original files after successful conversion (default: remove)')
-    parser.add_argument('--headed',
+    parser.add_argument('--background',
                        action='store_true',
-                       help='Run in headed mode with GUI (does not run in Docker)')
+                       help='Run in background mode (CLI, no GUI) - for Docker/service use')
     
     args = parser.parse_args()
     
-    # Check if headed mode is requested
-    if args.headed:
-        # Launch GUI mode
+    # Default to headed mode unless --background is specified
+    # Also check if loop mode or directory is provided (implies background mode)
+    if not args.background and not args.loop and not args.directory:
+        # Launch GUI mode (default)
         try:
             import convert_videos_gui
             convert_videos_gui.main()
         except ImportError as e:
             logger.error(f"Failed to import GUI module: {e}")
             logger.error("Make sure convert_videos_gui.py is available and tkinter is installed")
+            logger.error("To run in background mode, use: --background")
             sys.exit(1)
         return
     

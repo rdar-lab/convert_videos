@@ -19,6 +19,9 @@ TARGET_DIR=${ARGS[0]:-/data}
 # Build command with appropriate flags using array
 CMD_ARGS=('python3' '/usr/local/bin/convert_videos.py')
 
+# Always run in background mode for Docker (no GUI)
+CMD_ARGS+=('--background')
+
 if $DRY_RUN; then
     echo "Running in dry-run mode: no actual conversion will be done."
     CMD_ARGS+=('--dry-run')

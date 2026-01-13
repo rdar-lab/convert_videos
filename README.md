@@ -8,16 +8,20 @@ Benefits:
 2. Significant storage savings (typically 40-60% smaller files)
 3. Works on Windows, Linux, and macOS
 4. Configurable via YAML configuration file or command line arguments
-5. **NEW**: Headed mode with GUI for easy configuration and monitoring
+5. **Default GUI mode** for easy configuration and monitoring
 
 ## Modes of Operation
 
-### Headed Mode (GUI) - NEW!
+### Headed Mode (GUI) - **DEFAULT**
 
-Run with a graphical user interface for easy configuration and monitoring:
+The default mode launches a graphical user interface for easy configuration and monitoring:
 
 ```bash
-python convert_videos.py --headed
+# Launch GUI (default)
+python convert_videos.py
+
+# Or explicitly
+python convert_videos.py --config config.yaml
 ```
 
 The GUI provides:
@@ -27,20 +31,20 @@ The GUI provides:
 - **Live Progress**: Monitor current file being processed with progress indicator
 - **Results Dashboard**: View completed conversions with success/failure status, error messages, and space savings
 
-**Note**: Headed mode runs directly on your system (not in Docker) and requires a display.
+**Note**: GUI mode requires a display and tkinter. For headless/server use, see Background Mode below.
 
 ### Background Mode (CLI)
 
-Run as a command-line tool or service (Docker/loop mode):
+For command-line, Docker, or headless server use, add the `--background` flag:
 
 ```bash
-# Single run
-python convert_videos.py /path/to/videos
+# Single run in background mode
+python convert_videos.py --background /path/to/videos
 
 # Continuous monitoring (scans every hour)
-python convert_videos.py --loop /path/to/videos
+python convert_videos.py --background --loop /path/to/videos
 
-# Docker mode (runs in background)
+# Docker mode (automatically runs in background)
 docker run -d -v /path/to/videos:/data rdxmaster/convert_videos
 ```
 
@@ -99,23 +103,26 @@ See **[WINDOWS_INSTALL.md](WINDOWS_INSTALL.md)** for detailed Windows installati
 # Install Python dependencies:
 pip install -r requirements.txt
 
-# Run with GUI (headed mode):
-python convert_videos.py --headed
+# Run with GUI (default):
+python convert_videos.py
 
-# Or run from command line:
-python convert_videos.py "C:\Path\To\Videos"
+# Or run in background mode from command line:
+python convert_videos.py --background "C:\Path\To\Videos"
 
-# Or run continuously:
-python convert_videos.py --loop "C:\Path\To\Videos"
+# Run continuously in background:
+python convert_videos.py --background --loop "C:\Path\To\Videos"
 
 # Dry run to see what would be converted:
-python convert_videos.py --dry-run "C:\Path\To\Videos"
+python convert_videos.py --background --dry-run "C:\Path\To\Videos"
 
 # Keep original files after conversion:
-python convert_videos.py --preserve-original "C:\Path\To\Videos"
+python convert_videos.py --background --preserve-original "C:\Path\To\Videos"
 
-# Use a configuration file:
+# Use a configuration file with GUI:
 python convert_videos.py --config config.yaml
+
+# Use a configuration file in background mode:
+python convert_videos.py --background --config config.yaml "C:\Path\To\Videos"
 ```
 
 ### Linux/macOS (Without Docker)
@@ -135,17 +142,17 @@ pip3 install -r requirements.txt
 
 **Run the script:**
 ```bash
-# Run with GUI (headed mode):
-python3 convert_videos.py --headed
+# Run with GUI (default):
+python3 convert_videos.py
 
-# Or run from command line:
-python3 convert_videos.py /path/to/videos
+# Or run in background mode from command line:
+python3 convert_videos.py --background /path/to/videos
 
-# Or run continuously:
-python3 convert_videos.py --loop /path/to/videos
+# Or run continuously in background:
+python3 convert_videos.py --background --loop /path/to/videos
 
 # Keep original files after conversion:
-python3 convert_videos.py --preserve-original /path/to/videos
+python3 convert_videos.py --background --preserve-original /path/to/videos
 ```
 
 ### Docker (Linux)
