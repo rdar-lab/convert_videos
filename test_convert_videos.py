@@ -1022,5 +1022,95 @@ class TestConfigLoggingSettings(unittest.TestCase):
             self.assertIsNone(config['logging']['log_file'])
 
 
+class TestBundledDependencies(unittest.TestCase):
+    """Test bundled dependency detection and path resolution."""
+    
+    def test_get_bundled_path_not_frozen(self):
+        """Test get_bundled_path returns None when not running as PyInstaller bundle."""
+        result = convert_videos.get_bundled_path()
+        # When running normally (not frozen), should return None
+        self.assertIsNone(result)
+    
+    @patch('convert_videos.sys')
+    def test_get_bundled_path_frozen(self, mock_sys):
+        """Test get_bundled_path returns bundle path when running as PyInstaller bundle."""
+        # Mock PyInstaller frozen state
+        mock_sys.frozen = True
+        mock_sys._MEIPASS = '/tmp/meipass123'
+        
+        result = convert_videos.get_bundled_path()
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(str(result), '/tmp/meipass123')
+    
+    def test_find_dependency_path_with_absolute_config(self):
+        """Test that absolute paths from config are used directly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a mock executable
+            exe_path = Path(tmpdir) / 'HandBrakeCLI'
+            exe_path.write_text('#!/bin/bash\necho test')
+            
+            result = convert_videos.find_dependency_path('HandBrakeCLI', str(exe_path))
+            
+            self.assertEqual(result, str(exe_path))
+    
+    def test_find_dependency_path_not_frozen(self):
+        """Test that dependency name is returned when not frozen and no config."""
+        result = convert_videos.find_dependency_path('ffprobe', None)
+        
+        # Should return the dependency name as-is
+        self.assertEqual(result, 'ffprobe')
+    
+    @patch('convert_videos.sys')
+    @patch('convert_videos.platform.system')
+    def test_find_dependency_path_frozen_windows(self, mock_platform, mock_sys):
+        """Test bundled dependency detection on Windows."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Mock PyInstaller frozen state
+            mock_sys.frozen = True
+            mock_sys._MEIPASS = tmpdir
+            mock_platform.return_value = 'Windows'
+            
+            # Create a mock executable
+            exe_path = Path(tmpdir) / 'HandBrakeCLI.exe'
+            exe_path.write_text('mock exe')
+            
+            result = convert_videos.find_dependency_path('HandBrakeCLI', None)
+            
+            self.assertEqual(result, str(exe_path))
+    
+    @patch('convert_videos.sys')
+    @patch('convert_videos.platform.system')
+    def test_find_dependency_path_frozen_linux(self, mock_platform, mock_sys):
+        """Test bundled dependency detection on Linux."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Mock PyInstaller frozen state
+            mock_sys.frozen = True
+            mock_sys._MEIPASS = tmpdir
+            mock_platform.return_value = 'Linux'
+            
+            # Create a mock executable
+            exe_path = Path(tmpdir) / 'ffprobe'
+            exe_path.write_text('#!/bin/bash\necho test')
+            
+            result = convert_videos.find_dependency_path('ffprobe', None)
+            
+            self.assertEqual(result, str(exe_path))
+    
+    @patch('convert_videos.sys')
+    def test_find_dependency_path_frozen_not_found(self, mock_sys):
+        """Test that dependency name is returned when bundled file doesn't exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Mock PyInstaller frozen state
+            mock_sys.frozen = True
+            mock_sys._MEIPASS = tmpdir
+            # Don't create the executable file
+            
+            result = convert_videos.find_dependency_path('HandBrakeCLI', None)
+            
+            # Should fall back to using the name as-is
+            self.assertEqual(result, 'HandBrakeCLI')
+
+
 if __name__ == '__main__':
     unittest.main()
