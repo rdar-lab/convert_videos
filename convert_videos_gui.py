@@ -57,6 +57,7 @@ class VideoConverterGUI:
         deps = self.config.get('dependencies', {})
         logger.info(f"GUI initialized with HandBrakeCLI path: {deps.get('handbrake')}")
         logger.info(f"GUI initialized with ffprobe path: {deps.get('ffprobe')}")
+        logger.info(f"GUI initialized with ffmpeg path: {deps.get('ffmpeg')}")
         
         # Queue and results
         self.file_queue = []
@@ -195,7 +196,7 @@ class VideoConverterGUI:
         ttk.Button(deps_frame, text="Browse...", command=self.browse_ffprobe).grid(row=1, column=2, pady=5)
         
         ttk.Label(deps_frame, text="ffmpeg:").grid(row=2, column=0, sticky='w', pady=5)
-        self.ffmpeg_entry = ttk.Entry(deps_frame, width=40)
+        self.ffmpeg_entry = ttk.Entry(deps_frame, width=60)
         self.ffmpeg_entry.grid(row=2, column=1, padx=5, pady=5)
         self.ffmpeg_entry.insert(0, dependency_config.get('ffmpeg') or 'ffmpeg')
         ttk.Button(deps_frame, text="Browse...", command=self.browse_ffmpeg).grid(row=2, column=2, pady=5)
