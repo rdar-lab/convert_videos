@@ -60,23 +60,29 @@ def setup_logging(log_file_path=None):
     """Setup logging with both console and file output.
     
     Args:
-        log_file_path: Path to log file. If None, defaults to temp directory.
-                      Can be overridden by environment variable VIDEO_CONVERTER_LOG_FILE.
+        log_file_path: Path to log file. If None, checks environment variable
+                      VIDEO_CONVERTER_LOG_FILE, then defaults to temp directory.
     
     Returns:
         str: Path to the log file being used
+    
+    Note:
+        The main() function establishes priority: command-line arg > env var > config file > default.
+        This function receives the resolved log_file_path after main() has applied that priority,
+        then additionally checks the environment variable if log_file_path is still None.
     """
-    # Determine log file path with priority:
-    # 1. Environment variable
-    # 2. Function parameter
-    # 3. Default to temp directory
-    env_log_path = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
-    if env_log_path:
-        log_file_path = env_log_path
-    elif log_file_path is None:
-        # Default to temp directory
-        temp_dir = tempfile.gettempdir()
-        log_file_path = os.path.join(temp_dir, 'convert_videos.log')
+    # Determine log file path:
+    # If log_file_path is provided (from command line or config), use it
+    # Otherwise check environment variable
+    # Finally default to temp directory
+    if log_file_path is None:
+        env_log_path = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
+        if env_log_path:
+            log_file_path = env_log_path
+        else:
+            # Default to temp directory
+            temp_dir = tempfile.gettempdir()
+            log_file_path = os.path.join(temp_dir, 'convert_videos.log')
     
     # Ensure log directory exists
     log_file = Path(log_file_path)
@@ -112,7 +118,8 @@ def setup_logging(log_file_path=None):
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
     
-    logger.info(f"Logging to file: {log_file_path}")
+    # Use root logger after setup is complete
+    root_logger.info(f"Logging to file: {log_file_path}")
     
     return str(log_file_path)
 
@@ -123,13 +130,16 @@ def run_command(command_args, **kwargs):
     Args:
         command_args: List of command arguments
         **kwargs: Additional arguments to pass to subprocess.run
+                 Note: stdout and stderr will be set to PIPE for logging unless
+                       explicitly set to None by the caller
     
     Returns:
         subprocess.CompletedProcess: Result of the command execution
     """
     logger.info(f"Running command: {' '.join(str(arg) for arg in command_args)}")
     
-    # Ensure we capture output for logging
+    # Capture output for logging unless explicitly disabled
+    # Allow caller to explicitly set stdout/stderr to None if they don't want capture
     if 'stdout' not in kwargs:
         kwargs['stdout'] = subprocess.PIPE
     if 'stderr' not in kwargs:
@@ -140,11 +150,11 @@ def run_command(command_args, **kwargs):
     try:
         result = subprocess.run(command_args, **kwargs)
         
-        # Log stdout if present
+        # Log stdout if present and captured
         if result.stdout:
             logger.info(f"Command stdout: {result.stdout.strip()}")
         
-        # Log stderr if present
+        # Log stderr if present and captured
         if result.stderr:
             if result.returncode == 0:
                 # Some tools write normal output to stderr
