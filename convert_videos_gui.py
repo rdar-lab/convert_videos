@@ -11,6 +11,8 @@ import yaml
 from pathlib import Path
 import logging
 import os
+import subprocess
+import re
 
 import convert_videos
 
@@ -56,9 +58,13 @@ class VideoConverterGUI:
         # Thread communication
         self.progress_queue = queue.Queue()
         self.conversion_thread = None
+        self.current_process = None  # Track current subprocess for cancellation
         
         # Create UI
         self.create_ui()
+        
+        # Bind tab switch event to regenerate config
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         
         # Start progress update loop
         self.update_progress()
@@ -223,7 +229,7 @@ class VideoConverterGUI:
         self.current_file_label.pack(fill='x', pady=5)
         
         # Progress bar
-        self.progress_bar = ttk.Progressbar(current_frame, mode='indeterminate')
+        self.progress_bar = ttk.Progressbar(current_frame, mode='determinate', maximum=100)
         self.progress_bar.pack(fill='x', pady=5)
         
         self.progress_label = ttk.Label(current_frame, text="")
@@ -458,6 +464,13 @@ class VideoConverterGUI:
         }
         return config
 
+    def on_tab_changed(self, event):
+        """Handle tab switch event - regenerate config from UI."""
+        try:
+            self.config = self.generate_config()
+        except Exception as e:
+            logger.error(f"Failed to generate config on tab switch: {repr(e)}")
+
     def save_config(self):
         # Validate silently first
         is_valid = self.validate_config()
@@ -584,6 +597,129 @@ class VideoConverterGUI:
         
         threading.Thread(target=scan_thread, daemon=True).start()
         
+    def convert_file_with_progress(self, input_path, dry_run, preserve_original, output_config, dependency_config):
+        """Convert a file while reporting progress to the GUI.
+        
+        This wraps convert_videos.convert_file but captures HandBrake output to parse progress.
+        """
+        import sys
+        from pathlib import Path
+        
+        input_path = Path(input_path)
+        
+        if dry_run:
+            logger.info(f"[Dry Run] Would convert: {input_path}")
+            return True
+        
+        # Prepare output path (same logic as convert_videos.py)
+        output_format = output_config.get('format', 'mkv')
+        base_name = f"{input_path.stem}.converted"
+        output_path = input_path.with_name(f"{base_name}.{output_format}")
+        temp_output = output_path.with_suffix(f'.{output_format}.temp')
+        
+        if output_path.exists() or temp_output.exists():
+            counter = 1
+            while True:
+                output_path = input_path.with_name(f"{base_name}.{counter}.{output_format}")
+                temp_output = output_path.with_suffix(f'.{output_format}.temp')
+                if not output_path.exists() and not temp_output.exists():
+                    break
+                counter += 1
+        
+        # Build HandBrakeCLI command
+        handbrake_path = dependency_config.get('handbrake', 'HandBrakeCLI')
+        encoder_type = output_config.get('encoder', 'x265_10bit')
+        encoder_preset = output_config.get('preset', 'medium')
+        quality = output_config.get('quality', 24)
+        
+        effective_preset = convert_videos.map_preset_for_encoder(encoder_preset, encoder_type)
+        
+        cmd = [
+            handbrake_path,
+            '-i', str(input_path),
+            '-o', str(temp_output),
+            '-f', output_format,
+            '--all-audio',
+            '--aencoder', 'copy',
+            '--all-subtitles'
+        ]
+        
+        # Configure encoder
+        if encoder_type == 'nvenc_hevc':
+            cmd.extend(['-e', 'nvenc_h265', '--encoder-preset', effective_preset, '-q', str(quality)])
+        elif encoder_type == 'x265_10bit':
+            cmd.extend(['-e', 'x265', '--encoder-preset', effective_preset, '--encoder-profile', 'main10', '-q', str(quality)])
+        elif encoder_type == 'x265':
+            cmd.extend(['-e', 'x265', '--encoder-preset', effective_preset, '-q', str(quality)])
+        
+        try:
+            # Start process with output capture
+            if sys.platform == 'win32':
+                BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+                self.current_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True,
+                    bufsize=1,
+                    creationflags=BELOW_NORMAL_PRIORITY_CLASS
+                )
+            else:
+                try:
+                    command_args = ['nice', '-n', '10'] + cmd
+                    self.current_process = subprocess.Popen(
+                        command_args,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                        bufsize=1
+                    )
+                except FileNotFoundError:
+                    self.current_process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                        bufsize=1
+                    )
+            
+            # Parse output for progress
+            progress_pattern = re.compile(r'Encoding:.+?([0-9.]+) %')
+            for line in self.current_process.stdout:
+                if self.stop_requested:
+                    break
+                    
+                # Look for progress percentage
+                match = progress_pattern.search(line)
+                if match:
+                    percentage = float(match.group(1))
+                    self.progress_queue.put(('progress', percentage))
+            
+            # Wait for completion
+            return_code = self.current_process.wait()
+            self.current_process = None
+            
+            if return_code != 0 or self.stop_requested:
+                # Cleanup temp file
+                if temp_output.exists():
+                    temp_output.unlink()
+                return False
+            
+            # Validate and finalize
+            return convert_videos.validate_and_finalize(
+                input_path, temp_output, output_path, preserve_original, dependency_config
+            )
+            
+        except Exception as e:
+            logger.error(f"Conversion error: {repr(e)}")
+            self.current_process = None
+            if temp_output.exists():
+                try:
+                    temp_output.unlink()
+                except:
+                    pass
+            return False
+    
     def start_processing(self):
         """Start processing the file queue."""
         if not self.file_queue:
@@ -630,8 +766,8 @@ class VideoConverterGUI:
                     # Get original size
                     original_size = file_path.stat().st_size
                     
-                    # Convert file
-                    success = convert_videos.convert_file(
+                    # Convert file with progress tracking
+                    success = self.convert_file_with_progress(
                         file_path, 
                         dry_run=dry_run,
                         preserve_original=preserve_original,
@@ -682,12 +818,27 @@ class VideoConverterGUI:
         
         self.conversion_thread = threading.Thread(target=processing_thread, daemon=True)
         self.conversion_thread.start()
-        self.progress_bar.start()
         
     def stop_processing(self):
-        """Stop the current processing."""
+        """Stop the current processing and terminate HandBrake."""
         self.stop_requested = True
         self.stop_button.config(state='disabled')
+        
+        # Terminate the current HandBrake process if running
+        if self.current_process is not None:
+            try:
+                self.current_process.terminate()
+                logger.info("Terminating current HandBrake process...")
+                # Give it a moment to terminate gracefully
+                try:
+                    self.current_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    # Force kill if it doesn't terminate
+                    self.current_process.kill()
+                    logger.info("Force killed HandBrake process")
+            except Exception as e:
+                logger.error(f"Error terminating process: {repr(e)}")
+
         
     def reset_ui_state(self):
         """Reset UI to idle state."""
@@ -727,7 +878,16 @@ class VideoConverterGUI:
                 elif msg_type == 'start_file':
                     self.current_file = data
                     self.current_file_label.config(text=f"Processing: {data}")
-                    self.progress_label.config(text="Converting...")
+                    self.progress_label.config(text="Converting... 0%")
+                    # Stop indeterminate mode and reset to 0
+                    self.progress_bar.stop()
+                    self.progress_bar['value'] = 0
+                    
+                elif msg_type == 'progress':
+                    # Update progress bar with actual percentage
+                    percentage = data
+                    self.progress_bar['value'] = percentage
+                    self.progress_label.config(text=f"Converting... {percentage:.1f}%")
                     
                 elif msg_type == 'file_complete':
                     result = data
