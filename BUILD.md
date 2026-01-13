@@ -92,7 +92,9 @@ This will:
 1. Build executables for Linux, Windows, and macOS
 2. Build and push Docker image to DockerHub (if secrets are configured)
 3. Create a GitHub Release
-4. Upload all platform packages as release assets
+4. Upload all successfully built platform packages as release assets
+
+**Note:** The release will be created even if some platform builds fail. Only successfully built packages will be uploaded to the release.
 
 ### Docker Image Publishing
 
