@@ -289,30 +289,42 @@ class VideoConverterGUI:
         
     def browse_directory(self):
         """Open directory browser."""
-        directory = filedialog.askdirectory(initialdir=self.dir_entry.get())
-        if directory:
-            self.dir_entry.delete(0, tk.END)
-            self.dir_entry.insert(0, directory)
+        try:
+            directory = filedialog.askdirectory(initialdir=self.dir_entry.get())
+            if directory:
+                self.dir_entry.delete(0, tk.END)
+                self.dir_entry.insert(0, directory)
+        except Exception as e:
+            logger.error(f"Browse directory error: {repr(e)}")
+            messagebox.showerror("Browse Error", f"Failed to browse directory:\n{repr(e)}")
     
     def browse_handbrake(self):
         """Open file browser for HandBrakeCLI executable."""
-        file_path = filedialog.askopenfilename(
-            title="Select HandBrakeCLI executable",
-            filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
-        )
-        if file_path:
-            self.handbrake_entry.delete(0, tk.END)
-            self.handbrake_entry.insert(0, file_path)
+        try:
+            file_path = filedialog.askopenfilename(
+                title="Select HandBrakeCLI executable",
+                filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
+            )
+            if file_path:
+                self.handbrake_entry.delete(0, tk.END)
+                self.handbrake_entry.insert(0, file_path)
+        except Exception as e:
+            logger.error(f"Browse HandBrakeCLI error: {repr(e)}")
+            messagebox.showerror("Browse Error", f"Failed to browse for HandBrakeCLI:\n{repr(e)}")
     
     def browse_ffprobe(self):
         """Open file browser for ffprobe executable."""
-        file_path = filedialog.askopenfilename(
-            title="Select ffprobe executable",
-            filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
-        )
-        if file_path:
-            self.ffprobe_entry.delete(0, tk.END)
-            self.ffprobe_entry.insert(0, file_path)
+        try:
+            file_path = filedialog.askopenfilename(
+                title="Select ffprobe executable",
+                filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
+            )
+            if file_path:
+                self.ffprobe_entry.delete(0, tk.END)
+                self.ffprobe_entry.insert(0, file_path)
+        except Exception as e:
+            logger.error(f"Browse ffprobe error: {repr(e)}")
+            messagebox.showerror("Browse Error", f"Failed to browse for ffprobe:\n{repr(e)}")
             
     def validate_config(self):
         """Validate the current configuration."""
@@ -375,7 +387,46 @@ class VideoConverterGUI:
             
     def save_config(self):
         """Save the current configuration to file."""
-        if not self.validate_config():
+        # Validate silently first
+        errors = []
+        
+        # Validate directory
+        directory = self.dir_entry.get().strip()
+        if not directory:
+            errors.append("Directory is required")
+        elif not os.path.isdir(directory):
+            errors.append(f"Directory does not exist: {directory}")
+        
+        # Validate min file size
+        try:
+            min_size = self.min_size_entry.get().strip()
+            convert_videos.parse_file_size(min_size)
+        except ValueError as e:
+            errors.append(f"Invalid min file size: {e}")
+        
+        # Validate quality
+        try:
+            quality = int(self.quality_entry.get().strip())
+            if not (0 <= quality <= 51):
+                errors.append("Quality must be between 0 and 51")
+        except ValueError:
+            errors.append("Quality must be an integer")
+        
+        # Validate dependencies
+        handbrake_path = self.handbrake_entry.get().strip()
+        ffprobe_path = self.ffprobe_entry.get().strip()
+        
+        if handbrake_path:
+            if not convert_videos.check_single_dependency(handbrake_path):
+                errors.append(f"HandBrakeCLI not found: {handbrake_path}")
+        
+        if ffprobe_path:
+            if not convert_videos.check_single_dependency(ffprobe_path):
+                errors.append(f"ffprobe not found: {ffprobe_path}")
+        
+        if errors:
+            self.validation_label.config(text="❌ Validation failed", foreground="red")
+            messagebox.showerror("Validation Errors", "\n".join(errors))
             return
         
         # Ask user where to save the file
@@ -415,7 +466,8 @@ class VideoConverterGUI:
             self.config_file_path = Path(file_path)
             messagebox.showinfo("Success", f"Configuration saved to {file_path}")
         except Exception as e:
-            messagebox.showerror("Save Error", f"Failed to save configuration: {e}")
+            logger.error(f"Failed to save configuration: {repr(e)}")
+            messagebox.showerror("Save Error", f"Failed to save configuration:\n{repr(e)}")
             
     def load_config_file(self):
         """Load configuration from a file."""
@@ -434,35 +486,40 @@ class VideoConverterGUI:
             self.update_config_ui()
             messagebox.showinfo("Success", f"Configuration loaded from {file_path}")
         except Exception as e:
-            messagebox.showerror("Load Error", f"Failed to load configuration: {e}")
+            logger.error(f"Failed to load configuration: {repr(e)}")
+            messagebox.showerror("Load Error", f"Failed to load configuration:\n{repr(e)}")
             
     def update_config_ui(self):
         """Update UI fields with current config."""
-        self.dir_entry.delete(0, tk.END)
-        # Default to current working directory if no directory in config
-        default_dir = self.config.get('directory') or os.getcwd()
-        self.dir_entry.insert(0, default_dir)
-        
-        self.min_size_entry.delete(0, tk.END)
-        self.min_size_entry.insert(0, str(self.config.get('min_file_size') or '1GB'))
-        
-        output_config = self.config.get('output', {})
-        self.format_var.set(output_config.get('format', 'mkv'))
-        self.encoder_var.set(output_config.get('encoder', 'x265_10bit'))
-        self.preset_var.set(output_config.get('preset', 'medium'))
-        
-        self.quality_entry.delete(0, tk.END)
-        self.quality_entry.insert(0, str(output_config.get('quality') or 24))
-        
-        dependency_config = self.config.get('dependencies', {})
-        self.handbrake_entry.delete(0, tk.END)
-        self.handbrake_entry.insert(0, dependency_config.get('handbrake') or 'HandBrakeCLI')
-        
-        self.ffprobe_entry.delete(0, tk.END)
-        self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
-        
-        self.remove_original_var.set(self.config.get('remove_original_files', False))
-        self.dry_run_var.set(self.config.get('dry_run', False))
+        try:
+            self.dir_entry.delete(0, tk.END)
+            # Default to current working directory if no directory in config
+            default_dir = self.config.get('directory') or os.getcwd()
+            self.dir_entry.insert(0, default_dir)
+            
+            self.min_size_entry.delete(0, tk.END)
+            self.min_size_entry.insert(0, str(self.config.get('min_file_size') or '1GB'))
+            
+            output_config = self.config.get('output', {})
+            self.format_var.set(output_config.get('format', 'mkv'))
+            self.encoder_var.set(output_config.get('encoder', 'x265_10bit'))
+            self.preset_var.set(output_config.get('preset', 'medium'))
+            
+            self.quality_entry.delete(0, tk.END)
+            self.quality_entry.insert(0, str(output_config.get('quality') or 24))
+            
+            dependency_config = self.config.get('dependencies', {})
+            self.handbrake_entry.delete(0, tk.END)
+            self.handbrake_entry.insert(0, dependency_config.get('handbrake') or 'HandBrakeCLI')
+            
+            self.ffprobe_entry.delete(0, tk.END)
+            self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
+            
+            self.remove_original_var.set(self.config.get('remove_original_files', False))
+            self.dry_run_var.set(self.config.get('dry_run', False))
+        except Exception as e:
+            logger.error(f"Failed to update UI with config: {repr(e)}")
+            messagebox.showerror("UI Update Error", f"Failed to update interface:\n{repr(e)}")
         
     def scan_files(self):
         """Scan directory for eligible files."""
@@ -501,7 +558,8 @@ class VideoConverterGUI:
                 
                 self.progress_queue.put(('scan_complete', files))
             except Exception as e:
-                self.progress_queue.put(('scan_error', str(e)))
+                logger.error(f"Scan error: {repr(e)}")
+                self.progress_queue.put(('scan_error', repr(e)))
         
         threading.Thread(target=scan_thread, daemon=True).start()
         
@@ -534,7 +592,8 @@ class VideoConverterGUI:
                 'ffprobe': self.ffprobe_entry.get().strip()
             }
         except Exception as e:
-            messagebox.showerror("Configuration Error", f"Invalid configuration: {e}")
+            logger.error(f"Configuration error: {repr(e)}")
+            messagebox.showerror("Configuration Error", f"Invalid configuration:\n{repr(e)}")
             self.reset_ui_state()
             return
         
@@ -586,10 +645,11 @@ class VideoConverterGUI:
                     )
                     
                 except Exception as e:
+                    logger.error(f"File conversion error: {repr(e)}")
                     result = ConversionResult(
                         file_path=str(file_path),
                         success=False,
-                        error_message=str(e),
+                        error_message=repr(e),
                         original_size=file_path.stat().st_size if file_path.exists() else 0,
                         new_size=0
                     )
@@ -706,10 +766,14 @@ class VideoConverterGUI:
         
     def clear_results(self):
         """Clear the results list."""
-        if messagebox.askyesno("Clear Results", "Are you sure you want to clear all results?"):
-            self.conversion_results.clear()
-            self.results_tree.delete(*self.results_tree.get_children())
-            self.summary_label.config(text="No conversions completed yet")
+        try:
+            if messagebox.askyesno("Clear Results", "Are you sure you want to clear all results?"):
+                self.conversion_results.clear()
+                self.results_tree.delete(*self.results_tree.get_children())
+                self.summary_label.config(text="No conversions completed yet")
+        except Exception as e:
+            logger.error(f"Clear results error: {repr(e)}")
+            messagebox.showerror("Clear Error", f"Failed to clear results:\n{repr(e)}")
             
     @staticmethod
     def format_size(size_bytes):
