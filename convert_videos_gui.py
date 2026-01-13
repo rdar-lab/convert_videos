@@ -53,7 +53,7 @@ class DuplicateResult:
     def __init__(self, hash_value, files, hamming_distance, thumbnail_path=None):
         self.hash_value = hash_value
         self.files = files  # List of file paths
-        self.hamming_distance = hamming_distance
+        self.hamming_distance = hamming_distance  # Max distance within the group
         self.thumbnail_path = thumbnail_path  # Path to comparison thumbnail
 
 
@@ -1224,14 +1224,13 @@ class VideoConverterGUI:
                 # Extract middle frames and calculate hashes
                 video_hashes = []
                 dependency_config = self.config.get('dependencies', {})
-                ffmpeg_path = convert_videos.find_dependency_path('ffmpeg', dependency_config.get('ffprobe'))
-                if not ffmpeg_path:
-                    ffmpeg_path = 'ffmpeg'
+                ffprobe_path_config = dependency_config.get('ffprobe')
+                ffmpeg_path_config = dependency_config.get('ffmpeg') if 'ffmpeg' in dependency_config else ffprobe_path_config
                 
                 for i, video_file in enumerate(video_files):
                     try:
                         # Get video duration
-                        ffprobe_path = convert_videos.find_dependency_path('ffprobe', dependency_config.get('ffprobe'))
+                        ffprobe_path = convert_videos.find_dependency_path('ffprobe', ffprobe_path_config)
                         if not ffprobe_path:
                             ffprobe_path = 'ffprobe'
                         
@@ -1252,6 +1251,10 @@ class VideoConverterGUI:
                         # Extract middle frame
                         with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_frame:
                             temp_frame_path = temp_frame.name
+                        
+                        ffmpeg_path = convert_videos.find_dependency_path('ffmpeg', ffmpeg_path_config)
+                        if not ffmpeg_path:
+                            ffmpeg_path = 'ffmpeg'
                         
                         extract_cmd = [
                             ffmpeg_path, '-ss', str(midpoint), '-i', str(video_file),
@@ -1295,6 +1298,7 @@ class VideoConverterGUI:
                     
                     group_files = [f1]
                     group_thumbs = [thumb1]
+                    max_dist_in_group = 0
                     
                     for h2, f2, thumb2 in video_hashes[i+1:]:
                         if f2 in processed_files:
@@ -1305,6 +1309,7 @@ class VideoConverterGUI:
                         if dist <= max_distance:
                             group_files.append(f2)
                             group_thumbs.append(thumb2)
+                            max_dist_in_group = max(max_dist_in_group, dist)
                             processed_files.add(f2)
                     
                     if len(group_files) > 1:
@@ -1319,7 +1324,7 @@ class VideoConverterGUI:
                         duplicate_groups.append(DuplicateResult(
                             hash_value=h1,
                             files=group_files,
-                            hamming_distance=0,  # Distance within group varies
+                            hamming_distance=max_dist_in_group,
                             thumbnail_path=thumbnail_path
                         ))
                         processed_files.add(f1)
