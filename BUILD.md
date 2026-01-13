@@ -72,6 +72,7 @@ After successful build, you'll find:
 The package includes:
 - The executable
 - README.md
+- BUILD.md
 - LICENSE
 - config.yaml.example
 

@@ -27,7 +27,6 @@ import zipfile
 import shutil
 import argparse
 from pathlib import Path
-import tempfile
 
 
 # Version constants for external tools
@@ -76,15 +75,44 @@ def download_file(url, dest_path):
         return False
 
 
+def _is_within_directory(directory, target):
+    """
+    Return True if the target path is inside the given directory.
+    Prevents path traversal when extracting archives.
+    """
+    abs_directory = os.path.abspath(directory)
+    abs_target = os.path.abspath(target)
+    prefix = os.path.commonpath([abs_directory])
+    return os.path.commonpath([abs_directory, abs_target]) == prefix
+
+
+def _safe_extract_tar(tar, extract_to):
+    """Safely extract members from a tarfile into extract_to."""
+    for member in tar.getmembers():
+        member_path = os.path.join(extract_to, member.name)
+        if not _is_within_directory(extract_to, member_path):
+            raise RuntimeError(f"Attempted path traversal in tar archive: {member.name}")
+    tar.extractall(extract_to)
+
+
+def _safe_extract_zip(zip_ref, extract_to):
+    """Safely extract members from a zipfile into extract_to."""
+    for member in zip_ref.infolist():
+        member_path = os.path.join(extract_to, member.filename)
+        if not _is_within_directory(extract_to, member_path):
+            raise RuntimeError(f"Attempted path traversal in zip archive: {member.filename}")
+    zip_ref.extractall(extract_to)
+
+
 def extract_archive(archive_path, extract_to):
-    """Extract tar.gz, zip, or other archive."""
+    """Extract tar.gz, zip, or other archive safely."""
     print(f"Extracting {archive_path}...")
     if archive_path.endswith('.tar.gz') or archive_path.endswith('.tar.bz2') or archive_path.endswith('.tar.xz'):
         with tarfile.open(archive_path, 'r:*') as tar:
-            tar.extractall(extract_to)
+            _safe_extract_tar(tar, extract_to)
     elif archive_path.endswith('.zip'):
         with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_to)
+            _safe_extract_zip(zip_ref, extract_to)
     else:
         raise ValueError(f"Unsupported archive format: {archive_path}")
     print(f"Extracted to {extract_to}")
@@ -140,13 +168,45 @@ def download_ffmpeg(platform_name, download_dir):
     urls = {
         'windows': 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',  # Latest stable
         'linux': 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz',  # Latest stable
-        'macos': f'https://evermeet.cx/ffmpeg/ffmpeg-{FFMPEG_VERSION}.zip'  # Versioned release
+        'macos': {
+            'ffmpeg': f'https://evermeet.cx/ffmpeg/ffmpeg-{FFMPEG_VERSION}.zip',
+            'ffprobe': f'https://evermeet.cx/ffmpeg/ffprobe-{FFMPEG_VERSION}.zip'
+        }
     }
     
     if platform_name not in urls:
         print(f"Warning: FFmpeg auto-download not supported for {platform_name}")
         return None
     
+    exe_suffix = '.exe' if platform_name == 'windows' else ''
+    ffmpeg_bin = None
+    ffprobe_bin = None
+    
+    # macOS requires separate downloads for ffmpeg and ffprobe
+    if platform_name == 'macos':
+        macos_urls = urls[platform_name]
+        
+        # Download ffmpeg
+        ffmpeg_archive = ffmpeg_dir / 'ffmpeg.zip'
+        if download_file(macos_urls['ffmpeg'], ffmpeg_archive):
+            extract_archive(ffmpeg_archive, ffmpeg_dir / 'ffmpeg_extract')
+            for root, dirs, files in os.walk(ffmpeg_dir / 'ffmpeg_extract'):
+                if 'ffmpeg' in files:
+                    ffmpeg_bin = Path(root) / 'ffmpeg'
+                    break
+        
+        # Download ffprobe
+        ffprobe_archive = ffmpeg_dir / 'ffprobe.zip'
+        if download_file(macos_urls['ffprobe'], ffprobe_archive):
+            extract_archive(ffprobe_archive, ffmpeg_dir / 'ffprobe_extract')
+            for root, dirs, files in os.walk(ffmpeg_dir / 'ffprobe_extract'):
+                if 'ffprobe' in files:
+                    ffprobe_bin = Path(root) / 'ffprobe'
+                    break
+        
+        return {'ffmpeg': ffmpeg_bin, 'ffprobe': ffprobe_bin}
+    
+    # Windows and Linux have both binaries in one archive
     url = urls[platform_name]
     archive_name = url.split('/')[-1]
     archive_path = ffmpeg_dir / archive_name
@@ -157,10 +217,6 @@ def download_ffmpeg(platform_name, download_dir):
     extract_archive(archive_path, ffmpeg_dir)
     
     # Find ffmpeg and ffprobe binaries
-    exe_suffix = '.exe' if platform_name == 'windows' else ''
-    ffmpeg_bin = None
-    ffprobe_bin = None
-    
     for root, dirs, files in os.walk(ffmpeg_dir):
         if f'ffmpeg{exe_suffix}' in files and not ffmpeg_bin:
             ffmpeg_bin = Path(root) / f'ffmpeg{exe_suffix}'
@@ -191,10 +247,15 @@ binaries = []
             handbrake_path = repr(binaries_data['handbrake'])
             spec_content += f"binaries.append(({handbrake_path}, '.'))\n"
         if 'ffmpeg' in binaries_data and binaries_data['ffmpeg']:
-            ffmpeg_path = repr(binaries_data['ffmpeg']['ffmpeg'])
-            ffprobe_path = repr(binaries_data['ffmpeg']['ffprobe'])
-            spec_content += f"binaries.append(({ffmpeg_path}, '.'))\n"
-            spec_content += f"binaries.append(({ffprobe_path}, '.'))\n"
+            ffmpeg_info = binaries_data['ffmpeg']
+            ffmpeg_binary = ffmpeg_info.get('ffmpeg') if isinstance(ffmpeg_info, dict) else None
+            ffprobe_binary = ffmpeg_info.get('ffprobe') if isinstance(ffmpeg_info, dict) else None
+            if ffmpeg_binary:
+                ffmpeg_path = repr(ffmpeg_binary)
+                spec_content += f"binaries.append(({ffmpeg_path}, '.'))\n"
+            if ffprobe_binary:
+                ffprobe_path = repr(ffprobe_binary)
+                spec_content += f"binaries.append(({ffprobe_path}, '.'))\n"
     
     spec_content += """
 a = Analysis(
@@ -343,10 +404,15 @@ def main():
             print("\nDownloading FFmpeg...")
             ffmpeg_bins = download_ffmpeg(target_platform, download_dir)
             if ffmpeg_bins:
-                binaries_data['ffmpeg'] = {
-                    'ffmpeg': str(ffmpeg_bins['ffmpeg']),
-                    'ffprobe': str(ffmpeg_bins['ffprobe'])
-                }
+                ffmpeg_data = {}
+                ffmpeg_path = ffmpeg_bins.get('ffmpeg')
+                if ffmpeg_path is not None:
+                    ffmpeg_data['ffmpeg'] = str(ffmpeg_path)
+                ffprobe_path = ffmpeg_bins.get('ffprobe')
+                if ffprobe_path is not None:
+                    ffmpeg_data['ffprobe'] = str(ffprobe_path)
+                if ffmpeg_data:
+                    binaries_data['ffmpeg'] = ffmpeg_data
         else:
             if args.ffmpeg_path and args.ffprobe_path:
                 binaries_data['ffmpeg'] = {
