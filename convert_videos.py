@@ -61,6 +61,58 @@ DEFAULT_MIN_FILE_SIZE_BYTES = 1024 ** 3  # 1GB
 FILE_SIZE_PATTERN = re.compile(r'^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$', re.IGNORECASE)
 
 
+def get_bundled_path():
+    """Get the path to the bundled resources directory when running as a PyInstaller executable.
+    
+    Returns:
+        Path object pointing to the bundle directory, or None if not running as a bundle
+    """
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        # Running as a PyInstaller bundle
+        return Path(sys._MEIPASS)
+    return None
+
+
+def find_dependency_path(dependency_name, config_path=None):
+    """Find the path to a dependency executable.
+    
+    Searches in this order:
+    1. If config_path is provided and is an absolute path, use it directly
+    2. If running as PyInstaller bundle, check sys._MEIPASS directory
+    3. Use the provided name/path as-is (will be resolved via PATH)
+    
+    Args:
+        dependency_name: Name of the dependency (e.g., 'HandBrakeCLI', 'ffprobe')
+        config_path: Optional path from configuration
+    
+    Returns:
+        str: Path to the dependency executable
+    """
+    # If config provides an absolute path, use it directly
+    if config_path:
+        config_path_obj = Path(config_path)
+        if config_path_obj.is_absolute() and config_path_obj.exists():
+            return str(config_path)
+    
+    # Check if running as PyInstaller bundle
+    bundle_dir = get_bundled_path()
+    if bundle_dir:
+        # Look for dependency in bundle directory
+        # Check for .exe extension on Windows
+        if platform.system() == 'Windows':
+            exe_name = dependency_name if dependency_name.endswith('.exe') else f'{dependency_name}.exe'
+        else:
+            exe_name = dependency_name
+        
+        bundled_path = bundle_dir / exe_name
+        if bundled_path.exists():
+            logger.debug(f"Found bundled dependency: {bundled_path}")
+            return str(bundled_path)
+    
+    # Fall back to config path or dependency name (will be resolved via PATH)
+    return config_path if config_path else dependency_name
+
+
 def setup_logging(log_file_path=None):
     """Setup logging with both console and file output.
     
@@ -409,9 +461,10 @@ def check_dependencies(dependency_paths=None):
             'ffprobe': 'ffprobe'
         }
     
+    # Resolve dependency paths (check bundle directory if running as PyInstaller executable)
     dependencies = {
-        'ffprobe': dependency_paths.get('ffprobe', 'ffprobe'),
-        'HandBrakeCLI': dependency_paths.get('handbrake', 'HandBrakeCLI')
+        'ffprobe': find_dependency_path('ffprobe', dependency_paths.get('ffprobe', 'ffprobe')),
+        'HandBrakeCLI': find_dependency_path('HandBrakeCLI', dependency_paths.get('handbrake', 'HandBrakeCLI'))
     }
     missing = []
     
@@ -469,7 +522,7 @@ def get_codec(file_path, dependency_config=None):
     if dependency_config is None:
         dependency_config = {}
     
-    ffprobe_path = dependency_config.get('ffprobe', 'ffprobe')
+    ffprobe_path = find_dependency_path('ffprobe', dependency_config.get('ffprobe', 'ffprobe'))
     
     command_args = [ffprobe_path, '-v', 'error', '-select_streams', 'v:0', 
              '-show_entries', 'stream=codec_name',
@@ -493,7 +546,7 @@ def get_duration(file_path, dependency_config=None):
     if dependency_config is None:
         dependency_config = {}
     
-    ffprobe_path = dependency_config.get('ffprobe', 'ffprobe')
+    ffprobe_path = find_dependency_path('ffprobe', dependency_config.get('ffprobe', 'ffprobe'))
     
     try:
         result = run_command(
@@ -588,7 +641,7 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     if dependency_config is None:
         dependency_config = {}
     
-    handbrake_path = dependency_config.get('handbrake', 'HandBrakeCLI')
+    handbrake_path = find_dependency_path('HandBrakeCLI', dependency_config.get('handbrake', 'HandBrakeCLI'))
     
     # Default output configuration
     if output_config is None:
