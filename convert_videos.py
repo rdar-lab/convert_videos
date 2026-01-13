@@ -248,7 +248,11 @@ def check_single_dependency(command):
         command: Command name or path to check
         
     Returns:
-        True if command is found, False otherwise
+        tuple: (success: bool, error_message: str or None)
+               - (True, None) if command is valid
+               - (False, "not_found") if command not found
+               - (False, "invalid") if command exists but is not valid
+               - (False, "timeout") if command timed out
     """
     try:
         subprocess.run([command, '--version'], 
@@ -256,9 +260,13 @@ def check_single_dependency(command):
                       stderr=subprocess.PIPE,
                       check=True,
                       timeout=5)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return False
+        return True, None
+    except FileNotFoundError:
+        return False, "not_found"
+    except subprocess.CalledProcessError:
+        return False, "invalid"
+    except subprocess.TimeoutExpired:
+        return False, "timeout"
 
 
 def get_codec(file_path, dependency_config=None):

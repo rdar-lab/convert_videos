@@ -369,12 +369,24 @@ class VideoConverterGUI:
         ffprobe_path = self.ffprobe_entry.get().strip()
         
         if handbrake_path:
-            if not convert_videos.check_single_dependency(handbrake_path):
-                errors.append(f"HandBrakeCLI not found: {handbrake_path}")
+            success, error_type = convert_videos.check_single_dependency(handbrake_path)
+            if not success:
+                if error_type == "not_found":
+                    errors.append(f"HandBrakeCLI not found: {handbrake_path}")
+                elif error_type == "invalid":
+                    errors.append(f"HandBrakeCLI exists but is not a valid executable: {handbrake_path}")
+                elif error_type == "timeout":
+                    errors.append(f"HandBrakeCLI timed out: {handbrake_path}")
         
         if ffprobe_path:
-            if not convert_videos.check_single_dependency(ffprobe_path):
-                errors.append(f"ffprobe not found: {ffprobe_path}")
+            success, error_type = convert_videos.check_single_dependency(ffprobe_path)
+            if not success:
+                if error_type == "not_found":
+                    errors.append(f"ffprobe not found: {ffprobe_path}")
+                elif error_type == "invalid":
+                    errors.append(f"ffprobe exists but is not a valid executable: {ffprobe_path}")
+                elif error_type == "timeout":
+                    errors.append(f"ffprobe timed out: {ffprobe_path}")
         
         # Display results
         if errors:
@@ -417,12 +429,24 @@ class VideoConverterGUI:
         ffprobe_path = self.ffprobe_entry.get().strip()
         
         if handbrake_path:
-            if not convert_videos.check_single_dependency(handbrake_path):
-                errors.append(f"HandBrakeCLI not found: {handbrake_path}")
+            success, error_type = convert_videos.check_single_dependency(handbrake_path)
+            if not success:
+                if error_type == "not_found":
+                    errors.append(f"HandBrakeCLI not found: {handbrake_path}")
+                elif error_type == "invalid":
+                    errors.append(f"HandBrakeCLI exists but is not a valid executable: {handbrake_path}")
+                elif error_type == "timeout":
+                    errors.append(f"HandBrakeCLI timed out: {handbrake_path}")
         
         if ffprobe_path:
-            if not convert_videos.check_single_dependency(ffprobe_path):
-                errors.append(f"ffprobe not found: {ffprobe_path}")
+            success, error_type = convert_videos.check_single_dependency(ffprobe_path)
+            if not success:
+                if error_type == "not_found":
+                    errors.append(f"ffprobe not found: {ffprobe_path}")
+                elif error_type == "invalid":
+                    errors.append(f"ffprobe exists but is not a valid executable: {ffprobe_path}")
+                elif error_type == "timeout":
+                    errors.append(f"ffprobe timed out: {ffprobe_path}")
         
         if errors:
             self.validation_label.config(text="❌ Validation failed", foreground="red")
