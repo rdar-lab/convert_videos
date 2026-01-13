@@ -77,9 +77,9 @@ def find_dependency_path(dependency_name, config_path=None):
     """Find the path to a dependency executable.
     
     Searches in this order:
-    1. If config_path is provided and is an absolute path, use it directly
+    1. If config_path is provided and is an absolute path that exists, use it directly
     2. If running as PyInstaller bundle, check sys._MEIPASS directory
-    3. Use the provided name/path as-is (will be resolved via PATH)
+    3. Use config_path if provided (for PATH resolution), otherwise use dependency_name
     
     Args:
         dependency_name: Name of the dependency (e.g., 'HandBrakeCLI', 'ffprobe')
@@ -88,7 +88,7 @@ def find_dependency_path(dependency_name, config_path=None):
     Returns:
         str: Path to the dependency executable
     """
-    # If config provides an absolute path, use it directly
+    # If config provides an absolute path that exists, use it directly (highest priority)
     if config_path:
         config_path_obj = Path(config_path)
         if config_path_obj.is_absolute() and config_path_obj.exists():
@@ -109,11 +109,9 @@ def find_dependency_path(dependency_name, config_path=None):
             logger.debug(f"Found bundled dependency: {bundled_path}")
             return str(bundled_path)
     
-    # Fall back to config path or dependency name (will be resolved via PATH)
-    # If config_path is just a name (not absolute), treat it same as dependency_name
-    if config_path and Path(config_path).is_absolute():
-        return config_path
-    return dependency_name
+    # Fall back to config_path if provided, otherwise use dependency_name
+    # (will be resolved via PATH)
+    return config_path if config_path else dependency_name
 
 
 def setup_logging(log_file_path=None):
@@ -645,10 +643,6 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         dependency_config = {}
     
     handbrake_path = find_dependency_path('HandBrakeCLI', dependency_config.get('handbrake', 'HandBrakeCLI'))
-    
-    # Default output configuration
-    if output_config is None:
-        output_config = {}
     
     output_format = output_config.get('format', 'mkv')
     encoder_type = output_config.get('encoder', 'x265_10bit')
