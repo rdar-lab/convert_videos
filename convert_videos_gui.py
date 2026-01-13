@@ -452,7 +452,7 @@ class VideoConverterGUI:
                 'format': self.format_var.get(),
                 'encoder': self.encoder_var.get(),
                 'preset': self.preset_var.get(),
-                'quality': int(self.quality_entry.get().strip())
+                'quality': self._parse_quality()
             },
             'dependencies': {
                 'handbrake': self.handbrake_entry.get().strip(),
@@ -463,6 +463,14 @@ class VideoConverterGUI:
             'loop': False  # GUI mode doesn't use loop
         }
         return config
+    
+    def _parse_quality(self):
+        """Parse quality value from entry, returning default if invalid."""
+        try:
+            return int(self.quality_entry.get().strip())
+        except (ValueError, AttributeError):
+            logger.warning("Invalid quality value, using default 24")
+            return 24
 
     def on_tab_changed(self, event):
         """Handle tab switch event - regenerate config from UI."""
@@ -472,14 +480,13 @@ class VideoConverterGUI:
             logger.error(f"Failed to generate config on tab switch: {repr(e)}")
 
     def save_config(self):
+        """Save the current configuration to file."""
         # Validate silently first
         is_valid = self.validate_config()
         if not is_valid:
             return
        
         config = self.generate_config()
-
-        """Save the current configuration to file."""
 
         # Ask user where to save the file
         file_path = filedialog.asksaveasfilename(
@@ -697,9 +704,26 @@ class VideoConverterGUI:
             
             # Wait for completion
             return_code = self.current_process.wait()
+            
+            # If a stop was requested, ensure the process is terminated
+            if self.stop_requested:
+                if self.current_process is not None and self.current_process.poll() is None:
+                    try:
+                        self.current_process.terminate()
+                    except Exception:
+                        pass
+                    try:
+                        self.current_process.wait(timeout=5)
+                    except Exception:
+                        pass
+                self.current_process = None
+                if temp_output.exists():
+                    temp_output.unlink()
+                return False
+            
             self.current_process = None
             
-            if return_code != 0 or self.stop_requested:
+            if return_code != 0:
                 # Cleanup temp file
                 if temp_output.exists():
                     temp_output.unlink()
@@ -716,8 +740,8 @@ class VideoConverterGUI:
             if temp_output.exists():
                 try:
                     temp_output.unlink()
-                except:
-                    pass
+                except Exception as cleanup_error:
+                    logger.warning("Failed to remove temporary output file %s: %r", temp_output, cleanup_error)
             return False
     
     def start_processing(self):
@@ -792,6 +816,15 @@ class VideoConverterGUI:
                                 counter += 1
                         if output_path.exists():
                             new_size = output_path.stat().st_size
+                        else:
+                            logger.warning(
+                                "Converted file for '%s' not found after %d attempts using base name '%s' "
+                                "and format '%s'.",
+                                file_path,
+                                MAX_OUTPUT_FILE_ATTEMPTS,
+                                base_name,
+                                output_format,
+                            )
                     
                     result = ConversionResult(
                         file_path=str(file_path),
@@ -997,7 +1030,7 @@ class VideoConverterGUI:
 def main():
     """Run the GUI application."""
     root = tk.Tk()
-    app = VideoConverterGUI(root)
+    VideoConverterGUI(root)
     root.mainloop()
 
 

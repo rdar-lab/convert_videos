@@ -429,12 +429,7 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     
     # Default output configuration
     if output_config is None:
-        output_config = {
-            'format': 'mkv',
-            'encoder': 'x265_10bit',
-            'preset': 'medium',
-            'quality': 24
-        }
+        output_config = {}
     
     output_format = output_config.get('format', 'mkv')
     encoder_type = output_config.get('encoder', 'x265_10bit')
@@ -755,7 +750,9 @@ def download_dependencies(progress_callback=None):
                         break
                 if not handbrake_found:
                     raise Exception(f"Could not find {handbrake_exe} in downloaded archive")
-                shutil.rmtree(deps_dir / "handbrake_temp")
+                temp_dir = deps_dir / "handbrake_temp"
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir)
             else:
                 # For formats like .dmg or .flatpak, just inform user
                 raise Exception(f"HandBrakeCLI format {handbrake_archive.suffix} requires manual installation on {system}")
@@ -805,7 +802,9 @@ def download_dependencies(progress_callback=None):
                         break
                 if not ffprobe_found:
                     raise Exception(f"Could not find {ffprobe_exe} in downloaded archive")
-                shutil.rmtree(deps_dir / "ffmpeg_temp")
+                temp_dir = deps_dir / "ffmpeg_temp"
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir)
             elif ffmpeg_archive.suffix in [".tar", ".xz", ".gz"]:
                 with tarfile.open(ffmpeg_archive, 'r:*') as tar_ref:
                     tar_ref.extractall(deps_dir / "ffmpeg_temp")
@@ -822,7 +821,9 @@ def download_dependencies(progress_callback=None):
                         break
                 if not ffprobe_found:
                     raise Exception(f"Could not find {ffprobe_exe} in downloaded archive")
-                shutil.rmtree(deps_dir / "ffmpeg_temp")
+                temp_dir = deps_dir / "ffmpeg_temp"
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir)
             else:
                 raise Exception(f"ffmpeg format {ffmpeg_archive.suffix} not supported")
         except Exception as e:
