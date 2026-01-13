@@ -106,6 +106,9 @@ def _safe_extract_zip(zip_ref, extract_to):
 
 def extract_archive(archive_path, extract_to):
     """Extract tar.gz, zip, or other archive safely."""
+
+    archive_path = str(archive_path)
+
     print(f"Extracting {archive_path}...")
     if archive_path.endswith('.tar.gz') or archive_path.endswith('.tar.bz2') or archive_path.endswith('.tar.xz'):
         with tarfile.open(archive_path, 'r:*') as tar:
