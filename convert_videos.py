@@ -151,7 +151,7 @@ def load_config(config_path=None):
             'handbrake': 'HandBrakeCLI',
             'ffprobe': 'ffprobe'
         },
-        'preserve_original': False,
+        'remove_original_files': False,  # Changed from preserve_original
         'loop': False,
         'dry_run': False
     }
@@ -414,14 +414,15 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         logger.info(f"Mapped preset '{encoder_preset}' to '{effective_preset}' for encoder '{encoder_type}'")
     
     # Avoid collisions with existing output or temp files
-    base_name = f"{input_path.stem} - New"
+    # Use .converted instead of " - New"
+    base_name = f"{input_path.stem}.converted"
     output_path = input_path.with_name(f"{base_name}.{output_format}")
     temp_output = output_path.with_suffix(f'.{output_format}.temp')
     
     if output_path.exists() or temp_output.exists():
         counter = 1
         while True:
-            output_path = input_path.with_name(f"{base_name} ({counter}).{output_format}")
+            output_path = input_path.with_name(f"{base_name}.{counter}.{output_format}")
             temp_output = output_path.with_suffix(f'.{output_format}.temp')
             if not output_path.exists() and not temp_output.exists():
                 break
@@ -631,10 +632,24 @@ Examples:
     target_directory = args.directory or config.get('directory')
     dry_run = args.dry_run or config.get('dry_run', False)
     loop_mode = args.loop or config.get('loop', False)
-    preserve_original = args.preserve_original or config.get('preserve_original', False)
     
-    # Check for environment variable override
-    preserve_original = preserve_original or os.getenv("VIDEO_CONVERTER_PRESERVE_ORIGINAL", "").lower() in ("1", "true", "yes")
+    # Handle both old preserve_original and new remove_original_files config keys
+    # Default is to preserve (not remove) original files
+    remove_original = config.get('remove_original_files', False)
+    preserve_from_old_config = config.get('preserve_original')
+    if preserve_from_old_config is not None:
+        # If old config exists, convert it to new logic
+        remove_original = not preserve_from_old_config
+    
+    # Command line flag overrides config
+    if args.preserve_original:
+        remove_original = False
+    
+    preserve_original = not remove_original
+    
+    # Check for environment variable override (maintain backward compatibility)
+    if os.getenv("VIDEO_CONVERTER_PRESERVE_ORIGINAL", "").lower() in ("1", "true", "yes"):
+        preserve_original = True
     
     # Get output configuration
     output_config = config.get('output', {})

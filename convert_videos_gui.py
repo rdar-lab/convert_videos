@@ -106,7 +106,9 @@ class VideoConverterGUI:
         ttk.Label(dir_frame, text="Target Directory:").grid(row=0, column=0, sticky='w', pady=5)
         self.dir_entry = ttk.Entry(dir_frame, width=50)
         self.dir_entry.grid(row=0, column=1, padx=5, pady=5)
-        self.dir_entry.insert(0, self.config.get('directory') or '')
+        # Default to current working directory if no directory in config
+        default_dir = self.config.get('directory') or os.getcwd()
+        self.dir_entry.insert(0, default_dir)
         ttk.Button(dir_frame, text="Browse...", command=self.browse_directory).grid(row=0, column=2, pady=5)
         
         ttk.Label(dir_frame, text="Min File Size:").grid(row=1, column=0, sticky='w', pady=5)
@@ -145,13 +147,29 @@ class VideoConverterGUI:
         self.quality_entry.insert(0, str(output_config.get('quality') or 24))
         ttk.Label(output_frame, text="(0-51, lower=better)").grid(row=3, column=2, sticky='w')
         
+        # Dependencies settings
+        deps_frame = ttk.LabelFrame(scrollable_frame, text="Dependencies (Optional)", padding=10)
+        deps_frame.pack(fill='x', padx=10, pady=5)
+        
+        dependency_config = self.config.get('dependencies', {})
+        
+        ttk.Label(deps_frame, text="HandBrakeCLI:").grid(row=0, column=0, sticky='w', pady=5)
+        self.handbrake_entry = ttk.Entry(deps_frame, width=50)
+        self.handbrake_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.handbrake_entry.insert(0, dependency_config.get('handbrake') or 'HandBrakeCLI')
+        
+        ttk.Label(deps_frame, text="ffprobe:").grid(row=1, column=0, sticky='w', pady=5)
+        self.ffprobe_entry = ttk.Entry(deps_frame, width=50)
+        self.ffprobe_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
+        
         # Other options
         options_frame = ttk.LabelFrame(scrollable_frame, text="Other Options", padding=10)
         options_frame.pack(fill='x', padx=10, pady=5)
         
-        self.preserve_var = tk.BooleanVar(value=self.config.get('preserve_original', False))
-        ttk.Checkbutton(options_frame, text="Preserve Original Files", 
-                       variable=self.preserve_var).pack(anchor='w', pady=2)
+        self.remove_original_var = tk.BooleanVar(value=self.config.get('remove_original_files', False))
+        ttk.Checkbutton(options_frame, text="Remove Original Files After Conversion", 
+                       variable=self.remove_original_var).pack(anchor='w', pady=2)
         
         self.dry_run_var = tk.BooleanVar(value=self.config.get('dry_run', False))
         ttk.Checkbutton(options_frame, text="Dry Run (simulate only)",
@@ -336,7 +354,11 @@ class VideoConverterGUI:
                 'preset': self.preset_var.get(),
                 'quality': int(self.quality_entry.get().strip())
             },
-            'preserve_original': self.preserve_var.get(),
+            'dependencies': {
+                'handbrake': self.handbrake_entry.get().strip(),
+                'ffprobe': self.ffprobe_entry.get().strip()
+            },
+            'remove_original_files': self.remove_original_var.get(),
             'dry_run': self.dry_run_var.get(),
             'loop': False  # GUI mode doesn't use loop
         }
@@ -372,7 +394,9 @@ class VideoConverterGUI:
     def update_config_ui(self):
         """Update UI fields with current config."""
         self.dir_entry.delete(0, tk.END)
-        self.dir_entry.insert(0, self.config.get('directory') or '')
+        # Default to current working directory if no directory in config
+        default_dir = self.config.get('directory') or os.getcwd()
+        self.dir_entry.insert(0, default_dir)
         
         self.min_size_entry.delete(0, tk.END)
         self.min_size_entry.insert(0, str(self.config.get('min_file_size') or '1GB'))
@@ -385,7 +409,14 @@ class VideoConverterGUI:
         self.quality_entry.delete(0, tk.END)
         self.quality_entry.insert(0, str(output_config.get('quality') or 24))
         
-        self.preserve_var.set(self.config.get('preserve_original', False))
+        dependency_config = self.config.get('dependencies', {})
+        self.handbrake_entry.delete(0, tk.END)
+        self.handbrake_entry.insert(0, dependency_config.get('handbrake') or 'HandBrakeCLI')
+        
+        self.ffprobe_entry.delete(0, tk.END)
+        self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
+        
+        self.remove_original_var.set(self.config.get('remove_original_files', False))
         self.dry_run_var.set(self.config.get('dry_run', False))
         
     def scan_files(self):
@@ -430,9 +461,14 @@ class VideoConverterGUI:
                 'preset': self.preset_var.get(),
                 'quality': int(self.quality_entry.get().strip())
             }
-            preserve_original = self.preserve_var.get()
+            remove_original = self.remove_original_var.get()
+            # Convert to preserve_original for backward compatibility with convert_file function
+            preserve_original = not remove_original
             dry_run = self.dry_run_var.get()
-            dependency_config = self.config.get('dependencies', {})
+            dependency_config = {
+                'handbrake': self.handbrake_entry.get().strip(),
+                'ffprobe': self.ffprobe_entry.get().strip()
+            }
         except Exception as e:
             messagebox.showerror("Configuration Error", f"Invalid configuration: {e}")
             self.reset_ui_state()
@@ -462,15 +498,15 @@ class VideoConverterGUI:
                     # Get new size (if not dry run and successful)
                     new_size = 0
                     if success and not dry_run:
-                        # Find the newly created file
-                        base_name = f"{file_path.stem} - New"
+                        # Find the newly created file with .converted naming
+                        base_name = f"{file_path.stem}.converted"
                         output_format = output_config['format']
                         output_path = file_path.with_name(f"{base_name}.{output_format}")
                         if not output_path.exists():
                             # Try with counter
                             counter = 1
                             while counter < MAX_OUTPUT_FILE_ATTEMPTS:
-                                output_path = file_path.with_name(f"{base_name} ({counter}).{output_format}")
+                                output_path = file_path.with_name(f"{base_name}.{counter}.{output_format}")
                                 if output_path.exists():
                                     break
                                 counter += 1

@@ -73,7 +73,7 @@ output:
   quality: 24  # Lower = better quality, larger file (range: 0-51)
 
 # Other options
-preserve_original: false  # Keep original files after conversion
+remove_original_files: false  # Remove original files after conversion (default: false, preserves originals)
 loop: false  # Run continuously (scan every hour)
 dry_run: false  # Show what would be converted without converting
 ```
@@ -200,20 +200,25 @@ docker run \
 5. Converts non-HEVC videos to H.265 using optimal settings
 6. Preserves all audio tracks and subtitles from the original file
 7. Validates the conversion by comparing video durations
-8. Removes the original file if conversion is successful (unless `--preserve-original` is used)
+8. By default, preserves the original file (unless `remove_original_files: true` in config)
 
 ## File Naming
 
-- Converted files: `[Original Name] - New.mkv` (or with counter if collision: `[Original Name] - New (1).mkv`)
+- Converted files: `[Original Name].converted.mkv` (or with counter if collision: `[Original Name].converted.1.mkv`)
 - Failed conversions: `[Original Name].[ext].fail` (or with counter: `[Original Name].[ext].fail_1`)
 
 ## Advanced Options
 
-### Preserve Original Files
+### Remove Original Files After Conversion
 
-By default, original files are deleted after successful conversion. To keep them:
+By default, original files are preserved after successful conversion. To remove them:
 
-**Command line flag:**
+**Configuration file:**
+```yaml
+remove_original_files: true
+```
+
+**Command line flag (preserves original, overrides config):**
 ```bash
 python convert_videos.py --preserve-original /path/to/videos
 ```
