@@ -65,6 +65,10 @@ directory: "/path/to/videos"
 # Minimum file size threshold (supports human-readable formats)
 min_file_size: "1GB"  # Can be "500MB", "2GB", etc.
 
+# Logging configuration
+logging:
+  log_file: "/path/to/convert_videos.log"  # Optional: defaults to temp directory
+
 # Output format and encoder settings
 output:
   format: "mkv"  # Output container: mkv or mp4
@@ -76,6 +80,35 @@ output:
 remove_original_files: false  # Remove original files after conversion (default: false, preserves originals)
 loop: false  # Run continuously (scan every hour)
 dry_run: false  # Show what would be converted without converting
+```
+
+### Logging
+
+The tool creates a log file that captures all important events, including:
+- All commands executed (HandBrakeCLI, ffprobe, etc.)
+- Command output (stdout and stderr)
+- Exit status codes
+- Conversion progress and results
+
+**Log file location priority:**
+1. Command line argument: `--log-file /path/to/logfile.log`
+2. Environment variable: `VIDEO_CONVERTER_LOG_FILE=/path/to/logfile.log`
+3. Configuration file: `logging.log_file` setting
+4. Default: System temp directory (e.g., `/tmp/convert_videos.log`)
+
+**Examples:**
+
+```bash
+# Use custom log file via command line
+python convert_videos.py --log-file /var/log/convert_videos.log /path/to/videos
+
+# Use custom log file via environment variable
+export VIDEO_CONVERTER_LOG_FILE=/var/log/convert_videos.log
+python convert_videos.py /path/to/videos
+
+# Use custom log file via config file
+# (Set logging.log_file in config.yaml)
+python convert_videos.py --config config.yaml
 ```
 
 ### Encoder Options

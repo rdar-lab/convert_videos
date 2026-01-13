@@ -26,6 +26,16 @@ dependencies:
   #   Windows: "C:\\ffmpeg\\bin\\ffprobe.exe"
   ffprobe: "ffprobe"
 
+# Logging configuration (optional)
+logging:
+  # Path to log file
+  # If not specified, defaults to temp directory (e.g., /tmp/convert_videos.log)
+  # Can also be controlled via VIDEO_CONVERTER_LOG_FILE environment variable
+  # Examples:
+  #   Linux/macOS: "/var/log/convert_videos.log"
+  #   Windows: "C:\\logs\\convert_videos.log"
+  # log_file: "/path/to/convert_videos.log"
+
 # Output format and encoder settings
 output:
   # Output container format: mkv, mp4
