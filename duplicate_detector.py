@@ -12,6 +12,9 @@ from pathlib import Path
 import imagehash
 from PIL import Image
 
+# Import subprocess utilities
+from subprocess_utils import run_command
+
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -127,7 +130,7 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
                 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
                 str(video_file)
             ]
-            result = subprocess.run(duration_cmd, capture_output=True, text=True, timeout=30)
+            result = run_command(duration_cmd, timeout=30)
             
             if result.returncode != 0 or not result.stdout.strip():
                 logger.warning(f"Could not determine duration for {video_file}")
@@ -144,7 +147,7 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
                 '-vframes', '1', '-q:v', '2', '-f', 'image2',
                 str(temp_frame_path), '-y'
             ]
-            subprocess.run(extract_cmd, capture_output=True, timeout=30, check=True)
+            run_command(extract_cmd, timeout=30, check=True)
             
             # Calculate perceptual hash
             if os.path.exists(temp_frame_path) and os.path.getsize(temp_frame_path) > 0:

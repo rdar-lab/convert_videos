@@ -51,6 +51,14 @@ class VideoConverterGUI:
         self.config = convert_videos.load_config()
         self.config_file_path = Path('config.yaml')
         
+        # Log bundled dependency paths for debugging
+        # Note: These logs go to the log file (not console) and are useful for troubleshooting
+        # standalone executables where bundled dependencies should be auto-detected
+        deps = self.config.get('dependencies', {})
+        logger.info(f"GUI initialized with HandBrakeCLI path: {deps.get('handbrake')}")
+        logger.info(f"GUI initialized with ffprobe path: {deps.get('ffprobe')}")
+        logger.info(f"GUI initialized with ffmpeg path: {deps.get('ffmpeg')}")
+        
         # Queue and results
         self.file_queue = []
         self.current_file = None
@@ -176,19 +184,19 @@ class VideoConverterGUI:
         dependency_config = self.config.get('dependencies', {})
         
         ttk.Label(deps_frame, text="HandBrakeCLI:").grid(row=0, column=0, sticky='w', pady=5)
-        self.handbrake_entry = ttk.Entry(deps_frame, width=40)
+        self.handbrake_entry = ttk.Entry(deps_frame, width=60)
         self.handbrake_entry.grid(row=0, column=1, padx=5, pady=5)
         self.handbrake_entry.insert(0, dependency_config.get('handbrake') or 'HandBrakeCLI')
         ttk.Button(deps_frame, text="Browse...", command=self.browse_handbrake).grid(row=0, column=2, pady=5)
         
         ttk.Label(deps_frame, text="ffprobe:").grid(row=1, column=0, sticky='w', pady=5)
-        self.ffprobe_entry = ttk.Entry(deps_frame, width=40)
+        self.ffprobe_entry = ttk.Entry(deps_frame, width=60)
         self.ffprobe_entry.grid(row=1, column=1, padx=5, pady=5)
         self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
         ttk.Button(deps_frame, text="Browse...", command=self.browse_ffprobe).grid(row=1, column=2, pady=5)
         
         ttk.Label(deps_frame, text="ffmpeg:").grid(row=2, column=0, sticky='w', pady=5)
-        self.ffmpeg_entry = ttk.Entry(deps_frame, width=40)
+        self.ffmpeg_entry = ttk.Entry(deps_frame, width=60)
         self.ffmpeg_entry.grid(row=2, column=1, padx=5, pady=5)
         self.ffmpeg_entry.insert(0, dependency_config.get('ffmpeg') or 'ffmpeg')
         ttk.Button(deps_frame, text="Browse...", command=self.browse_ffmpeg).grid(row=2, column=2, pady=5)
@@ -810,13 +818,14 @@ class VideoConverterGUI:
             # Start process with output capture
             if sys.platform == 'win32':
                 BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+                CREATE_NO_WINDOW = 0x08000000  # Prevents console window flash
                 self.current_process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     universal_newlines=True,
                     bufsize=1,
-                    creationflags=BELOW_NORMAL_PRIORITY_CLASS
+                    creationflags=BELOW_NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW
                 )
             else:
                 try:

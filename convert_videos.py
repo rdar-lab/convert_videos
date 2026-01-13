@@ -27,6 +27,9 @@ import zipfile
 import shutil
 import tempfile
 
+# Import subprocess utilities
+from subprocess_utils import run_command
+
 
 # Get logger for this module
 # Note: Primary logging configuration is done via setup_logging() function called in main()
@@ -92,11 +95,13 @@ def find_dependency_path(dependency_name, config_path=None):
     if config_path:
         config_path_obj = Path(config_path)
         if config_path_obj.is_absolute() and config_path_obj.exists():
+            logger.info(f"Using absolute config path for {dependency_name}: {config_path}")
             return str(config_path)
     
     # Check if running as PyInstaller bundle
     bundle_dir = get_bundled_path()
     if bundle_dir:
+        logger.info(f"Running as PyInstaller bundle, checking for {dependency_name} in {bundle_dir}")
         # Look for dependency in bundle directory
         # Check for .exe extension on Windows
         if platform.system() == 'Windows':
@@ -106,12 +111,18 @@ def find_dependency_path(dependency_name, config_path=None):
         
         bundled_path = bundle_dir / exe_name
         if bundled_path.exists():
-            logger.debug(f"Found bundled dependency: {bundled_path}")
+            logger.info(f"Found bundled dependency: {bundled_path}")
             return str(bundled_path)
+        else:
+            logger.warning(f"Bundled dependency not found: {bundled_path}")
+    else:
+        logger.debug(f"Not running as PyInstaller bundle (frozen={getattr(sys, 'frozen', False)})")
     
     # Fall back to config_path if provided, otherwise use dependency_name
     # (will be resolved via PATH)
-    return config_path if config_path else dependency_name
+    result = config_path if config_path else dependency_name
+    logger.info(f"Using fallback path for {dependency_name}: {result}")
+    return result
 
 
 def setup_logging(log_file_path=None):
@@ -200,80 +211,6 @@ def setup_logging(log_file_path=None):
     return str(log_file_path) if log_file_path else None
 
 
-def run_command(command_args, **kwargs):
-    """Run a subprocess command and log all details.
-    
-    Args:
-        command_args: List of command arguments
-        **kwargs: Additional arguments to pass to subprocess.run
-                 Note: stdout and stderr will be set to PIPE for logging unless
-                       explicitly set to None by the caller
-    
-    Returns:
-        subprocess.CompletedProcess: Result of the command execution
-    """
-    # Maximum length for logged output to prevent huge log files
-    MAX_OUTPUT_LENGTH = 2000
-    
-    logger.info(f"Running command: {' '.join(str(arg) for arg in command_args)}")
-    
-    # Capture output for logging unless explicitly disabled
-    # Allow caller to explicitly set stdout/stderr to None if they don't want capture
-    if 'stdout' not in kwargs:
-        kwargs['stdout'] = subprocess.PIPE
-    if 'stderr' not in kwargs:
-        kwargs['stderr'] = subprocess.PIPE
-    if 'text' not in kwargs:
-        kwargs['text'] = True
-    
-    try:
-        result = subprocess.run(command_args, **kwargs)
-        
-        # Log stdout if present and captured, with truncation for large output
-        if result.stdout:
-            stdout_stripped = result.stdout.strip()
-            if len(stdout_stripped) > MAX_OUTPUT_LENGTH:
-                logger.info(f"Command stdout (truncated to {MAX_OUTPUT_LENGTH} chars): {stdout_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stdout_stripped)} chars]")
-            else:
-                logger.info(f"Command stdout: {stdout_stripped}")
-        
-        # Log stderr if present and captured, with truncation for large output
-        if result.stderr:
-            stderr_stripped = result.stderr.strip()
-            if result.returncode == 0:
-                # Some tools write normal output to stderr
-                if len(stderr_stripped) > MAX_OUTPUT_LENGTH:
-                    logger.info(f"Command stderr (truncated to {MAX_OUTPUT_LENGTH} chars): {stderr_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stderr_stripped)} chars]")
-                else:
-                    logger.info(f"Command stderr: {stderr_stripped}")
-            else:
-                if len(stderr_stripped) > MAX_OUTPUT_LENGTH:
-                    logger.error(f"Command stderr (truncated to {MAX_OUTPUT_LENGTH} chars): {stderr_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stderr_stripped)} chars]")
-                else:
-                    logger.error(f"Command stderr: {stderr_stripped}")
-        
-        # Log exit code
-        logger.info(f"Command exit code: {result.returncode}")
-        
-        return result
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Command failed with exit code {e.returncode}")
-        if e.stdout:
-            stdout_stripped = e.stdout.strip()
-            if len(stdout_stripped) > MAX_OUTPUT_LENGTH:
-                logger.error(f"Command stdout (truncated to {MAX_OUTPUT_LENGTH} chars): {stdout_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stdout_stripped)} chars]")
-            else:
-                logger.error(f"Command stdout: {stdout_stripped}")
-        if e.stderr:
-            stderr_stripped = e.stderr.strip()
-            if len(stderr_stripped) > MAX_OUTPUT_LENGTH:
-                logger.error(f"Command stderr (truncated to {MAX_OUTPUT_LENGTH} chars): {stderr_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stderr_stripped)} chars]")
-            else:
-                logger.error(f"Command stderr: {stderr_stripped}")
-        raise
-    except Exception as e:
-        logger.error(f"Command execution error: {type(e).__name__}: {e}")
-        raise
 
 
 def validate_encoder(encoder_type):
@@ -381,7 +318,8 @@ def load_config(config_path=None):
         },
         'dependencies': {
             'handbrake': 'HandBrakeCLI',
-            'ffprobe': 'ffprobe'
+            'ffprobe': 'ffprobe',
+            'ffmpeg': 'ffmpeg'
         },
         'logging': {
             'log_file': None  # None means default to temp directory
@@ -461,6 +399,10 @@ def load_config(config_path=None):
     config['dependencies']['ffprobe'] = find_dependency_path(
         'ffprobe',
         config['dependencies'].get('ffprobe')
+    )
+    config['dependencies']['ffmpeg'] = find_dependency_path(
+        'ffmpeg',
+        config['dependencies'].get('ffmpeg')
     )
     
     return config

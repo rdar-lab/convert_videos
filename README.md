@@ -138,19 +138,24 @@ Pre-built portable executables are available for Windows, Linux, and macOS from 
 
 **Benefits:**
 - No need to install Python, FFmpeg, or HandBrakeCLI
-- All dependencies bundled in a single executable
+- All dependencies bundled in executables
 - Works out of the box on any system
+- Separate executables for GUI and CLI modes
 
 **Download and run:**
 1. Download the appropriate package for your platform from [Releases](https://github.com/rdar-lab/convert_videos/releases)
 2. Extract the archive
-3. Run the executable:
-   - Linux/macOS: `./convert_videos`
-   - Windows: `convert_videos.exe`
+3. Run the appropriate executable:
+   - **GUI Mode (recommended for interactive use):**
+     - Linux/macOS: `./convert_videos_gui`
+     - Windows: `convert_videos_gui.exe`
+   - **CLI Mode (for background/automated tasks):**
+     - Linux/macOS: `./convert_videos_cli [options]`
+     - Windows: `convert_videos_cli.exe [options]`
 
-The portable executable supports all the same options as the Python script.
+The GUI executable runs without a console window for a clean experience. The CLI executable always runs in background mode, supports all command-line options, and is suitable for scripts and automation.
 
-**Building from source:** See [BUILD.md](BUILD.md) for instructions on building your own portable executable.
+**Building from source:** See [BUILD.md](BUILD.md) for instructions on building your own portable executables.
 
 ### Windows (Without Docker)
 

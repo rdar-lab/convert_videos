@@ -106,6 +106,9 @@ def _safe_extract_zip(zip_ref, extract_to):
 
 def extract_archive(archive_path, extract_to):
     """Extract tar.gz, zip, or other archive safely."""
+
+    archive_path = str(archive_path)
+
     print(f"Extracting {archive_path}...")
     if archive_path.endswith('.tar.gz') or archive_path.endswith('.tar.bz2') or archive_path.endswith('.tar.xz'):
         with tarfile.open(archive_path, 'r:*') as tar:
@@ -226,8 +229,17 @@ def download_ffmpeg(platform_name, download_dir):
     return {'ffmpeg': ffmpeg_bin, 'ffprobe': ffprobe_bin}
 
 
-def create_spec_file(platform_name, binaries_data):
-    """Create PyInstaller spec file for the application."""
+def create_spec_file(platform_name, binaries_data, script_name='convert_videos.py', 
+                    exe_name='convert_videos', console=True):
+    """Create PyInstaller spec file for the application.
+    
+    Args:
+        platform_name: Target platform ('windows', 'linux', 'macos')
+        binaries_data: Dict containing binary paths to bundle
+        script_name: Python script to build (default: 'convert_videos.py')
+        exe_name: Name for the output executable (default: 'convert_videos')
+        console: Whether to show console window (default: True for CLI, False for GUI)
+    """
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
@@ -257,15 +269,15 @@ binaries = []
                 ffprobe_path = repr(ffprobe_binary)
                 spec_content += f"binaries.append(({ffprobe_path}, '.'))\n"
     
-    spec_content += """
+    spec_content += f"""
 a = Analysis(
-    ['convert_videos.py'],
+    ['{script_name}'],
     pathex=[],
     binaries=binaries,
     datas=datas,
     hiddenimports=['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk'],
     hookspath=[],
-    hooksconfig={},
+    hooksconfig={{}},
     runtime_hooks=[],
     excludes=[],
     win_no_prefer_redirects=False,
@@ -283,14 +295,14 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='convert_videos',
+    name='{exe_name}',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console={console},
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -305,7 +317,7 @@ exe = EXE(
     
     spec_content += ")\n"
     
-    spec_file = Path('convert_videos.spec')
+    spec_file = Path(f'{exe_name}.spec')
     with open(spec_file, 'w') as f:
         f.write(spec_content)
     
@@ -326,13 +338,18 @@ def build_with_pyinstaller(spec_file):
 
 
 def create_distribution_package(platform_name):
-    """Create a distributable archive with the executable and necessary files."""
+    """Create a distributable archive with the executables and necessary files."""
     dist_dir = Path('dist')
-    exe_name = 'convert_videos.exe' if platform_name == 'windows' else 'convert_videos'
-    exe_path = dist_dir / exe_name
+    exe_extension = '.exe' if platform_name == 'windows' else ''
     
-    if not exe_path.exists():
-        print(f"Error: Executable not found at {exe_path}")
+    # Check for both executables
+    cli_exe_name = f'convert_videos_cli{exe_extension}'
+    gui_exe_name = f'convert_videos_gui{exe_extension}'
+    cli_exe_path = dist_dir / cli_exe_name
+    gui_exe_path = dist_dir / gui_exe_name
+    
+    if not cli_exe_path.exists():
+        print(f"Error: CLI executable not found at {cli_exe_path}")
         return None
     
     # Create package directory
@@ -340,8 +357,16 @@ def create_distribution_package(platform_name):
     package_dir = dist_dir / package_name
     package_dir.mkdir(exist_ok=True)
     
-    # Copy executable
-    shutil.copy2(exe_path, package_dir / exe_name)
+    # Copy CLI executable
+    shutil.copy2(cli_exe_path, package_dir / cli_exe_name)
+    print(f"Packaged CLI executable: {cli_exe_name}")
+    
+    # Copy GUI executable if it exists
+    if gui_exe_path.exists():
+        shutil.copy2(gui_exe_path, package_dir / gui_exe_name)
+        print(f"Packaged GUI executable: {gui_exe_name}")
+    else:
+        print(f"GUI executable not found at {gui_exe_path}, skipping")
     
     # Copy documentation files
     for doc in DOCS_TO_INCLUDE:
@@ -422,23 +447,53 @@ def main():
             elif args.ffmpeg_path or args.ffprobe_path:
                 print("Warning: Both --ffmpeg-path and --ffprobe-path must be provided together")
     
-    # Create spec file
-    print("\nCreating PyInstaller spec file...")
-    spec_file = create_spec_file(target_platform, binaries_data if not args.skip_download else None)
+    # Create spec files for both CLI and GUI versions
+    print("\nCreating PyInstaller spec files...")
     
-    # Build with PyInstaller
-    print("\nBuilding executable...")
-    if build_with_pyinstaller(spec_file):
-        # Create distribution package
-        print("\nCreating distribution package...")
-        create_distribution_package(target_platform)
-        print("\n[SUCCESS] Build completed successfully!")
-        exe_extension = '.exe' if target_platform == 'windows' else ''
-        print(f"\nExecutable location: dist/convert_videos{exe_extension}")
-        print(f"Distribution package: dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
-    else:
-        print("\n[FAILED] Build failed!")
+    # CLI version with console (always runs in background mode)
+    spec_file_cli = create_spec_file(
+        target_platform, 
+        binaries_data if not args.skip_download else None,
+        script_name='convert_videos_cli.py',
+        exe_name='convert_videos_cli',
+        console=True
+    )
+    
+    # GUI version without console
+    spec_file_gui = create_spec_file(
+        target_platform,
+        binaries_data if not args.skip_download else None,
+        script_name='convert_videos_gui.py',
+        exe_name='convert_videos_gui',
+        console=False
+    )
+    
+    # Build both executables with PyInstaller
+    print("\nBuilding CLI executable...")
+    cli_success = build_with_pyinstaller(spec_file_cli)
+    
+    if not cli_success:
+        print("\n[FAILED] CLI build failed!")
         sys.exit(1)
+    
+    print("\nBuilding GUI executable...")
+    gui_success = build_with_pyinstaller(spec_file_gui)
+    
+    if not gui_success:
+        print("\n[WARNING] GUI build failed, but CLI build succeeded")
+        print("This might happen if tkinter is not available")
+    
+    # Create distribution package
+    print("\nCreating distribution package...")
+    create_distribution_package(target_platform)
+    
+    print("\n[SUCCESS] Build completed successfully!")
+    exe_extension = '.exe' if target_platform == 'windows' else ''
+    print(f"\nExecutable locations:")
+    print(f"  CLI: dist/convert_videos_cli{exe_extension}")
+    if gui_success:
+        print(f"  GUI: dist/convert_videos_gui{exe_extension}")
+    print(f"Distribution package: dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
 
 
 if __name__ == '__main__':
