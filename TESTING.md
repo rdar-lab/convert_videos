@@ -77,10 +77,11 @@ Tests are automatically run via GitHub Actions on:
 - Push to main/master/develop branches
 - Pull requests targeting main/master/develop branches
 
-The CI pipeline runs on:
-- **Operating System**: Ubuntu Latest
+The CI pipeline runs on multiple platforms using a matrix strategy:
+- **Operating Systems**: Ubuntu Latest, Windows Latest, macOS Latest
 - **Python Version**: 3.11
 - **Test Files**: All test files (test_convert_videos.py, test_convert_videos_gui.py, test_duplicate_detector.py)
+- **Strategy**: fail-fast is disabled to ensure all platform tests complete even if one fails
 
 ## Cross-Platform Compatibility
 
