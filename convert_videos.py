@@ -19,6 +19,11 @@ from pathlib import Path
 import time
 import yaml
 import re
+import platform
+import urllib.request
+import tarfile
+import zipfile
+import shutil
 
 
 # Configure logging
@@ -151,7 +156,7 @@ def load_config(config_path=None):
             'handbrake': 'HandBrakeCLI',
             'ffprobe': 'ffprobe'
         },
-        'preserve_original': False,
+        'remove_original_files': False,
         'loop': False,
         'dry_run': False
     }
@@ -228,7 +233,10 @@ def check_dependencies(dependency_paths=None):
     
     for name, path in dependencies.items():
         try:
-            subprocess.run([path, '--version'], 
+            command_args = [path, '--version']
+            logger.info(f"Running {command_args}")
+
+            subprocess.run(command_args, 
                           stdout=subprocess.PIPE, 
                           stderr=subprocess.PIPE,
                           check=True)
@@ -239,6 +247,43 @@ def check_dependencies(dependency_paths=None):
         logger.error(f"Missing dependencies: {', '.join(missing)}")
         logger.error("Please install the required dependencies. See WINDOWS_INSTALL.md or README.md for instructions.")
         sys.exit(1)
+
+
+def check_single_dependency(command):
+    """Check if a single dependency command is available.
+    
+    Args:
+        command: Command name or path to check
+        
+    Returns:
+        tuple: (success: bool, error_message: str or None)
+               - (True, None) if command is valid
+               - (False, "not_found") if command not found
+               - (False, "invalid") if command exists but is not valid
+               - (False, "timeout") if command timed out
+    """
+    # Try both --version (for HandBrakeCLI) and -version (for ffprobe/ffmpeg)
+    for version_flag in ['--version', '-version']:
+        try:
+            command_args = [command, version_flag]
+            logger.info(f"Running {command_args}")
+
+            subprocess.run(command_args,
+                          stdout=subprocess.PIPE, 
+                          stderr=subprocess.PIPE,
+                          check=True,
+                          timeout=5)
+            return True, None
+        except FileNotFoundError:
+            return False, "not_found"
+        except subprocess.CalledProcessError:
+            # Try next version flag
+            continue
+        except subprocess.TimeoutExpired:
+            return False, "timeout"
+    
+    # If both version flags failed, the executable exists but is invalid
+    return False, "invalid"
 
 
 def get_codec(file_path, dependency_config=None):
@@ -253,11 +298,14 @@ def get_codec(file_path, dependency_config=None):
     
     ffprobe_path = dependency_config.get('ffprobe', 'ffprobe')
     
-    try:
-        result = subprocess.run(
-            [ffprobe_path, '-v', 'error', '-select_streams', 'v:0', 
+    command_args = [ffprobe_path, '-v', 'error', '-select_streams', 'v:0', 
              '-show_entries', 'stream=codec_name',
-             '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
+             '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)]
+
+    logger.info(f"Running {command_args}")
+    
+    try:
+        result = subprocess.run(command_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -326,6 +374,11 @@ def find_eligible_files(target_dir, min_size_bytes=None, dependency_config=None)
                 if file_path.suffix == '.fail' or '.fail_' in file_path.name:
                     continue
                 
+                # Skip files marked as already processed originals
+                # Check for .orig.* pattern (e.g., video.orig.mp4)
+                if '.orig.' in file_path.name:
+                    continue
+                
                 # Check file size
                 file_size = file_path.stat().st_size
                 if file_size < min_size_bytes:
@@ -376,12 +429,7 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     
     # Default output configuration
     if output_config is None:
-        output_config = {
-            'format': 'mkv',
-            'encoder': 'x265_10bit',
-            'preset': 'medium',
-            'quality': 24
-        }
+        output_config = {}
     
     output_format = output_config.get('format', 'mkv')
     encoder_type = output_config.get('encoder', 'x265_10bit')
@@ -414,14 +462,14 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         logger.info(f"Mapped preset '{encoder_preset}' to '{effective_preset}' for encoder '{encoder_type}'")
     
     # Avoid collisions with existing output or temp files
-    base_name = f"{input_path.stem} - New"
+    base_name = f"{input_path.stem}.converted"
     output_path = input_path.with_name(f"{base_name}.{output_format}")
     temp_output = output_path.with_suffix(f'.{output_format}.temp')
     
     if output_path.exists() or temp_output.exists():
         counter = 1
         while True:
-            output_path = input_path.with_name(f"{base_name} ({counter}).{output_format}")
+            output_path = input_path.with_name(f"{base_name}.{counter}.{output_format}")
             temp_output = output_path.with_suffix(f'.{output_format}.temp')
             if not output_path.exists() and not temp_output.exists():
                 break
@@ -474,14 +522,18 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         if sys.platform == 'win32':
             # Windows: Use BELOW_NORMAL_PRIORITY_CLASS (0x00004000)
             BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+            logger.info(f"Running {cmd}")
             subprocess.run(cmd, check=True, 
                           creationflags=BELOW_NORMAL_PRIORITY_CLASS)
         else:
             # Linux/Unix: Try to use nice if available, otherwise run without it
             try:
-                subprocess.run(['nice', '-n', '10'] + cmd, check=True)
+                command_args = ['nice', '-n', '10'] + cmd
+                logger.info(f"Running {command_args}")
+                subprocess.run(command_args, check=True)
             except FileNotFoundError:
                 # nice not available, run without it
+                logger.info(f"Running {cmd}")
                 subprocess.run(cmd, check=True)
         
         # Validate and finalize
@@ -521,13 +573,31 @@ def validate_and_finalize(input_path, temp_output, final_output, preserve_origin
     
     diff = abs(src_duration - out_duration)
     if diff <= 1:
-        # Success - move temp to final and optionally remove original
+        # Success - move temp to final and optionally remove/rename original
         temp_output.rename(final_output)
         if not preserve_original:
             input_path.unlink()
             logger.info(f"✅ Successfully converted: {final_output}")
         else:
-            logger.info(f"✅ Successfully converted (original preserved): {final_output}")
+            # Rename original to .orig.<ext> to mark it as processed
+            # This prevents reprocessing the same file
+            original_ext = input_path.suffix  # e.g., ".mp4"
+            orig_name = f"{input_path.stem}.orig{original_ext}"  # e.g., "video.orig.mp4"
+            orig_path = input_path.with_name(orig_name)
+            
+            # Handle name collisions
+            counter = 1
+            while orig_path.exists():
+                orig_name = f"{input_path.stem}.orig.{counter}{original_ext}"
+                orig_path = input_path.with_name(orig_name)
+                counter += 1
+            
+            try:
+                input_path.rename(orig_path)
+                logger.info(f"✅ Successfully converted (original renamed to {orig_path.name}): {final_output}")
+            except OSError as e:
+                logger.error(f"Failed to rename original file to {orig_path}: {repr(e)}")
+                logger.info(f"✅ Successfully converted (original preserved): {final_output}")
         return True
     else:
         # Duration mismatch - keep both files but mark original as failed
@@ -563,6 +633,231 @@ def validate_and_finalize(input_path, temp_output, final_output, preserve_origin
         return False
 
 
+def download_dependencies(progress_callback=None):
+    """
+    Download HandBrakeCLI and ffprobe to ./dependencies directory.
+    
+    Args:
+        progress_callback: Optional callback function to report progress.
+                          Called with status messages as strings.
+    
+    Returns:
+        tuple: (handbrake_path, ffprobe_path) as strings, or (None, None) on failure
+    """
+    try:
+        system = platform.system()
+        machine = platform.machine().lower()
+        
+        # Create dependencies directory
+        deps_dir = Path(os.getcwd()) / "dependencies"
+        deps_dir.mkdir(exist_ok=True)
+        
+        if progress_callback:
+            progress_callback("Detecting platform...")
+        logger.info("Detecting platform...")
+        
+        # Determine executable names based on platform
+        if system == "Windows":
+            handbrake_exe = "HandBrakeCLI.exe"
+            ffprobe_exe = "ffprobe.exe"
+        else:
+            handbrake_exe = "HandBrakeCLI"
+            ffprobe_exe = "ffprobe"
+        
+        # Check if dependencies already exist
+        handbrake_path = deps_dir / handbrake_exe
+        ffprobe_path = deps_dir / ffprobe_exe
+        
+        if handbrake_path.exists() and ffprobe_path.exists():
+            # Validate existing dependencies
+            handbrake_valid, _ = check_single_dependency(str(handbrake_path))
+            ffprobe_valid, _ = check_single_dependency(str(ffprobe_path))
+            
+            if handbrake_valid and ffprobe_valid:
+                msg = "Dependencies already exist and are valid. Skipping download."
+                if progress_callback:
+                    progress_callback(msg)
+                logger.info(msg)
+                return (str(handbrake_path.resolve()), str(ffprobe_path.resolve()))
+            else:
+                msg = "Existing dependencies are invalid. Re-downloading..."
+                if progress_callback:
+                    progress_callback(msg)
+                logger.info(msg)
+        
+        # Determine URLs based on platform
+        if system == "Windows":
+            handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-win-x86_64.zip"
+            ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+        elif system == "Darwin":  # macOS
+            if "arm" in machine or "aarch64" in machine:
+                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-arm64.dmg"
+            else:
+                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.dmg"
+            ffmpeg_url = "https://evermeet.cx/ffmpeg/ffmpeg-6.1.zip"
+        elif system == "Linux":
+            if "arm" in machine or "aarch64" in machine:
+                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-aarch64.flatpak"
+                ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz"
+            else:
+                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.flatpak"
+                ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+        else:
+            raise Exception(f"Unsupported platform: {system}")
+        
+        # Download HandBrakeCLI
+        msg = f"Downloading HandBrakeCLI for {system}..."
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        handbrake_archive = deps_dir / f"handbrake.{handbrake_url.split('.')[-1]}"
+        
+        try:
+            urllib.request.urlretrieve(handbrake_url, handbrake_archive)
+        except Exception as e:
+            raise Exception(f"Failed to download HandBrakeCLI: {repr(e)}")
+        
+        # Extract HandBrakeCLI
+        msg = "Extracting HandBrakeCLI..."
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        try:
+            if handbrake_archive.suffix == ".zip":
+                with zipfile.ZipFile(handbrake_archive, 'r') as zip_ref:
+                    zip_ref.extractall(deps_dir / "handbrake_temp")
+                # Find HandBrakeCLI executable in extracted files
+                handbrake_found = False
+                for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
+                    if handbrake_exe in files:
+                        shutil.copy2(Path(root) / handbrake_exe, deps_dir / handbrake_exe)
+                        handbrake_found = True
+                        break
+                if not handbrake_found:
+                    raise Exception(f"Could not find {handbrake_exe} in downloaded archive")
+                shutil.rmtree(deps_dir / "handbrake_temp")
+            elif handbrake_archive.suffix in [".tar", ".xz", ".gz"]:
+                with tarfile.open(handbrake_archive, 'r:*') as tar_ref:
+                    tar_ref.extractall(deps_dir / "handbrake_temp")
+                # Find HandBrakeCLI executable
+                handbrake_found = False
+                for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
+                    if handbrake_exe in files:
+                        shutil.copy2(Path(root) / handbrake_exe, deps_dir / handbrake_exe)
+                        handbrake_found = True
+                        break
+                if not handbrake_found:
+                    raise Exception(f"Could not find {handbrake_exe} in downloaded archive")
+                temp_dir = deps_dir / "handbrake_temp"
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir)
+            else:
+                # For formats like .dmg or .flatpak, just inform user
+                raise Exception(f"HandBrakeCLI format {handbrake_archive.suffix} requires manual installation on {system}")
+        except Exception as e:
+            logger.error(f"HandBrakeCLI extraction error: {repr(e)}")
+            msg = f"HandBrakeCLI extraction failed: {repr(e)}"
+            if progress_callback:
+                progress_callback(msg)
+            return (None, None)
+        finally:
+            if handbrake_archive.exists():
+                handbrake_archive.unlink()
+        
+        # Download ffmpeg (includes ffprobe)
+        msg = f"Downloading ffmpeg for {system}..."
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        ffmpeg_archive = deps_dir / f"ffmpeg.{ffmpeg_url.split('.')[-1]}"
+        
+        try:
+            urllib.request.urlretrieve(ffmpeg_url, ffmpeg_archive)
+        except Exception as e:
+            raise Exception(f"Failed to download ffmpeg: {repr(e)}")
+        
+        # Extract ffmpeg/ffprobe
+        msg = "Extracting ffmpeg..."
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        try:
+            if ffmpeg_archive.suffix == ".zip":
+                with zipfile.ZipFile(ffmpeg_archive, 'r') as zip_ref:
+                    zip_ref.extractall(deps_dir / "ffmpeg_temp")
+                # Find ffprobe executable (often in bin subdirectory)
+                ffprobe_found = False
+                for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
+                    if ffprobe_exe in files:
+                        shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
+                        ffprobe_found = True
+                        # Also copy ffmpeg if present
+                        ffmpeg_exe = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
+                        if ffmpeg_exe in files:
+                            shutil.copy2(Path(root) / ffmpeg_exe, deps_dir / ffmpeg_exe)
+                        break
+                if not ffprobe_found:
+                    raise Exception(f"Could not find {ffprobe_exe} in downloaded archive")
+                temp_dir = deps_dir / "ffmpeg_temp"
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir)
+            elif ffmpeg_archive.suffix in [".tar", ".xz", ".gz"]:
+                with tarfile.open(ffmpeg_archive, 'r:*') as tar_ref:
+                    tar_ref.extractall(deps_dir / "ffmpeg_temp")
+                # Find ffprobe executable (often in bin subdirectory)
+                ffprobe_found = False
+                for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
+                    if ffprobe_exe in files:
+                        shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
+                        ffprobe_found = True
+                        # Also copy ffmpeg if present
+                        ffmpeg_exe = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
+                        if ffmpeg_exe in files:
+                            shutil.copy2(Path(root) / ffmpeg_exe, deps_dir / ffmpeg_exe)
+                        break
+                if not ffprobe_found:
+                    raise Exception(f"Could not find {ffprobe_exe} in downloaded archive")
+                temp_dir = deps_dir / "ffmpeg_temp"
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir)
+            else:
+                raise Exception(f"ffmpeg format {ffmpeg_archive.suffix} not supported")
+        except Exception as e:
+            logger.error(f"ffmpeg extraction error: {repr(e)}")
+            msg = f"ffmpeg extraction failed: {repr(e)}"
+            if progress_callback:
+                progress_callback(msg)
+            return (None, None)
+        finally:
+            if ffmpeg_archive.exists():
+                ffmpeg_archive.unlink()
+        
+        # Make executables executable on Unix-like systems
+        if system in ["Linux", "Darwin"]:
+            if handbrake_path.exists():
+                os.chmod(handbrake_path, 0o755)
+            if ffprobe_path.exists():
+                os.chmod(ffprobe_path, 0o755)
+        
+        msg = f"Dependencies downloaded successfully to {deps_dir}"
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        return (str(handbrake_path.resolve()), str(ffprobe_path.resolve()))
+        
+    except Exception as e:
+        logger.error(f"Download dependencies error: {repr(e)}")
+        msg = f"Failed to download dependencies: {repr(e)}"
+        if progress_callback:
+            progress_callback(msg)
+        return (None, None)
+
+
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
@@ -570,15 +865,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python convert_videos.py /path/to/videos
-  python convert_videos.py --dry-run C:\\Videos
-  python convert_videos.py --loop /path/to/videos
-  python convert_videos.py --config config.yaml
+  python convert_videos.py                          # Launch GUI (default)
+  python convert_videos.py --gui                    # Launch GUI explicitly  
+  python convert_videos.py --config config.yaml     # Run with config (background mode)
+  python convert_videos.py --background /path/to/videos
+  python convert_videos.py --background --dry-run C:\\Videos
+  python convert_videos.py --background --loop /path/to/videos
         """
     )
     parser.add_argument('directory', 
                        nargs='?',  # Optional to allow config-only usage
-                       help='Directory to scan for video files (optional; can be set in config file)')
+                       help='Directory to scan for video files (optional; can be set in config file or GUI)')
     parser.add_argument('--config',
                        help='Path to configuration file (default: config.yaml)')
     parser.add_argument('--dry-run', 
@@ -587,11 +884,43 @@ Examples:
     parser.add_argument('--loop', 
                        action='store_true',
                        help='Run continuously, checking every hour')
-    parser.add_argument('--preserve-original', 
+    parser.add_argument('--remove-original-files', 
                        action='store_true',
-                       help='Keep original files after successful conversion (default: remove)')
+                       help='Remove original files after successful conversion (default: keep originals)')
+    parser.add_argument('--background',
+                       action='store_true',
+                       help='Run in background mode (CLI, no GUI) - for Docker/service use')
+    parser.add_argument('--gui',
+                       action='store_true',
+                       help='Run in GUI mode (default when no arguments provided)')
+    parser.add_argument('--auto-download-dependencies',
+                       action='store_true',
+                       help='Automatically download dependencies if not found (HandBrakeCLI, ffprobe)')
     
     args = parser.parse_args()
+    
+    # Determine whether to launch GUI or background mode
+    # GUI mode if:
+    # 1. --gui flag is explicitly provided, OR
+    # 2. No arguments at all (len(sys.argv) == 1)
+    # Background mode otherwise
+    launch_gui = args.gui or (len(sys.argv) == 1 and not args.background)
+    
+    if launch_gui and not args.background:
+        # Launch GUI mode
+        try:
+            import convert_videos_gui
+            convert_videos_gui.main()
+        except ImportError as e:
+            logger.error(f"Failed to import GUI module: {repr(e)}")
+            logger.error("Make sure tkinter is installed")
+            logger.error("To run in background mode, use: --background or provide arguments")
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"Failed to launch GUI: {repr(e)}")
+            logger.error("To run in background mode, use: --background or provide arguments")
+            sys.exit(1)
+        return
     
     # Load configuration file
     config = load_config(args.config)
@@ -600,10 +929,15 @@ Examples:
     target_directory = args.directory or config.get('directory')
     dry_run = args.dry_run or config.get('dry_run', False)
     loop_mode = args.loop or config.get('loop', False)
-    preserve_original = args.preserve_original or config.get('preserve_original', False)
     
-    # Check for environment variable override
-    preserve_original = preserve_original or os.getenv("VIDEO_CONVERTER_PRESERVE_ORIGINAL", "").lower() in ("1", "true", "yes")
+    # Get remove_original_files config
+    remove_original = config.get('remove_original_files', False)
+    
+    # Command line flag overrides config
+    if args.remove_original_files:
+        remove_original = True
+    
+    preserve_original = not remove_original
     
     # Get output configuration
     output_config = config.get('output', {})
@@ -655,6 +989,23 @@ Examples:
     if not validate_quality(quality):
         logger.error(f"Invalid quality value in config: {quality!r}. Must be an integer between 0 and 51.")
         sys.exit(1)
+    
+    # Auto-download dependencies if requested
+    if args.auto_download_dependencies:
+        logger.info("Auto-downloading dependencies...")
+        handbrake_path, ffprobe_path = download_dependencies()
+        
+        if handbrake_path and ffprobe_path:
+            # Update dependency config with downloaded paths
+            if 'dependencies' not in config:
+                config['dependencies'] = {}
+            config['dependencies']['handbrake'] = handbrake_path
+            config['dependencies']['ffprobe'] = ffprobe_path
+            dependency_config = config['dependencies']
+            logger.info(f"Dependencies downloaded: HandBrakeCLI={handbrake_path}, ffprobe={ffprobe_path}")
+        else:
+            logger.error("Failed to download dependencies. Please install manually.")
+            sys.exit(1)
     
     # Check dependencies
     check_dependencies(dependency_config)

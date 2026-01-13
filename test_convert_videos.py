@@ -569,7 +569,10 @@ class TestValidateAndFinalize(unittest.TestCase):
             )
             
             self.assertTrue(result)
-            self.assertTrue(input_file.exists())  # Original should still exist
+            # Original should be renamed to .orig.mp4
+            orig_file = tmpdir_path / 'input.orig.mp4'
+            self.assertFalse(input_file.exists())  # Original file should be renamed
+            self.assertTrue(orig_file.exists())  # Should now have .orig suffix
             self.assertFalse(temp_file.exists())
             self.assertTrue(final_file.exists())
     

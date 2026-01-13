@@ -8,6 +8,51 @@ Benefits:
 2. Significant storage savings (typically 40-60% smaller files)
 3. Works on Windows, Linux, and macOS
 4. Configurable via YAML configuration file or command line arguments
+5. **Default GUI mode** for easy configuration and monitoring
+
+## Modes of Operation
+
+### Headed Mode (GUI) - **DEFAULT**
+
+The default mode launches a graphical user interface when no arguments are provided:
+
+```bash
+# Launch GUI (default - no arguments)
+python convert_videos.py
+
+# Or explicitly with --gui flag
+python convert_videos.py --gui
+```
+
+The GUI provides:
+- **Configuration Editor**: Edit all settings with validation and save to config file
+- **Configuration Validation**: Real-time validation with error messages
+- **File Queue**: See all files waiting to be processed
+- **Live Progress**: Monitor current file being processed with progress indicator
+- **Results Dashboard**: View completed conversions with success/failure status, error messages, and space savings
+
+**Note**: GUI mode requires a display and tkinter. For headless/server use or when using config files, see Background Mode below.
+
+### Background Mode (CLI)
+
+Background mode is used when providing arguments (directory, config, flags) or explicitly with `--background`:
+
+```bash
+# Run with config file (background mode)
+python convert_videos.py --config config.yaml
+
+# Single run with directory
+python convert_videos.py /path/to/videos
+
+# With --background flag explicitly
+python convert_videos.py --background /path/to/videos
+
+# Continuous monitoring (scans every hour)
+python convert_videos.py --background --loop /path/to/videos
+
+# Docker mode (automatically runs in background)
+docker run -d -v /path/to/videos:/data rdxmaster/convert_videos
+```
 
 ## Configuration
 
@@ -28,7 +73,7 @@ output:
   quality: 24  # Lower = better quality, larger file (range: 0-51)
 
 # Other options
-preserve_original: false  # Keep original files after conversion
+remove_original_files: false  # Remove original files after conversion (default: false, preserves originals)
 loop: false  # Run continuously (scan every hour)
 dry_run: false  # Show what would be converted without converting
 ```
@@ -64,20 +109,26 @@ See **[WINDOWS_INSTALL.md](WINDOWS_INSTALL.md)** for detailed Windows installati
 # Install Python dependencies:
 pip install -r requirements.txt
 
-# Then run:
+# Run with GUI (default - no arguments):
+python convert_videos.py
+
+# Or run with directory (background mode):
 python convert_videos.py "C:\Path\To\Videos"
 
-# Or run continuously:
+# Run with config file (background mode):
+python convert_videos.py --config config.yaml
+
+# Run continuously:
 python convert_videos.py --loop "C:\Path\To\Videos"
 
 # Dry run to see what would be converted:
 python convert_videos.py --dry-run "C:\Path\To\Videos"
 
-# Keep original files after conversion:
-python convert_videos.py --preserve-original "C:\Path\To\Videos"
+# Remove original files after conversion:
+python convert_videos.py --remove-original-files "C:\Path\To\Videos"
 
-# Use a configuration file:
-python convert_videos.py --config config.yaml
+# Explicitly use background mode:
+python convert_videos.py --background "C:\Path\To\Videos"
 ```
 
 ### Linux/macOS (Without Docker)
@@ -97,13 +148,23 @@ pip3 install -r requirements.txt
 
 **Run the script:**
 ```bash
+# Run with GUI (default - no arguments):
+python3 convert_videos.py
+
+# Run with directory (background mode):
 python3 convert_videos.py /path/to/videos
 
-# Or run continuously:
+# Run with config file (background mode):
+python3 convert_videos.py --config config.yaml
+
+# Run continuously:
 python3 convert_videos.py --loop /path/to/videos
 
-# Keep original files after conversion:
-python3 convert_videos.py --preserve-original /path/to/videos
+# Remove original files after conversion:
+python3 convert_videos.py --remove-original-files /path/to/videos
+
+# Explicitly use background mode:
+python3 convert_videos.py --background /path/to/videos
 ```
 
 ### Docker (Linux)
@@ -139,22 +200,27 @@ docker run \
 5. Converts non-HEVC videos to H.265 using optimal settings
 6. Preserves all audio tracks and subtitles from the original file
 7. Validates the conversion by comparing video durations
-8. Removes the original file if conversion is successful (unless `--preserve-original` is used)
+8. By default, preserves the original file (unless `remove_original_files: true` in config)
 
 ## File Naming
 
-- Converted files: `[Original Name] - New.mkv` (or with counter if collision: `[Original Name] - New (1).mkv`)
+- Converted files: `[Original Name].converted.mkv` (or with counter if collision: `[Original Name].converted.1.mkv`)
 - Failed conversions: `[Original Name].[ext].fail` (or with counter: `[Original Name].[ext].fail_1`)
 
 ## Advanced Options
 
-### Preserve Original Files
+### Remove Original Files After Conversion
 
-By default, original files are deleted after successful conversion. To keep them:
+By default, original files are preserved after successful conversion. To remove them:
+
+**Configuration file:**
+```yaml
+remove_original_files: true
+```
 
 **Command line flag:**
 ```bash
-python convert_videos.py --preserve-original /path/to/videos
+python convert_videos.py --remove-original-files /path/to/videos
 ```
 
 **Environment variable:**

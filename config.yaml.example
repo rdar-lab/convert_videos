@@ -51,9 +51,9 @@ output:
   #   - Both encoders use similar quality scales, though results may differ
   quality: 24
 
-# Preserve original files after successful conversion
-# Default: false (original files are deleted)
-preserve_original: false
+# Remove original files after successful conversion
+# Default: false (original files are preserved)
+remove_original_files: false
 
 # Run in loop mode (continuously scan every hour)
 # Default: false
