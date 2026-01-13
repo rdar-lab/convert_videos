@@ -57,9 +57,9 @@ Tests are automatically run via GitHub Actions on:
 - Push to main/master/develop branches
 - Pull requests targeting main/master/develop branches
 
-The CI pipeline tests across:
-- **Operating Systems**: Ubuntu, Windows, macOS
-- **Python Versions**: 3.8, 3.9, 3.10, 3.11, 3.12
+The CI pipeline runs on:
+- **Operating System**: Ubuntu Latest
+- **Python Version**: 3.11
 
 ## Test Structure
 

@@ -187,5 +187,4 @@ See [TESTING.md](TESTING.md) for detailed testing documentation.
 Tests are automatically run via GitHub Actions on:
 - Push to main/master/develop branches
 - Pull requests to these branches
-- Across multiple OS: Ubuntu, Windows, macOS
-- Across Python versions: 3.8, 3.9, 3.10, 3.11, 3.12
+- Using Ubuntu Latest with Python 3.11

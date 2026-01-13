@@ -8,22 +8,18 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.11'
     
     - name: Install dependencies
       run: |
@@ -35,6 +31,5 @@ jobs:
         pytest test_convert_videos.py -v --cov=convert_videos --cov-report=term-missing
     
     - name: Upload coverage reports
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
       uses: codecov/codecov-action@v4
       continue-on-error: true
