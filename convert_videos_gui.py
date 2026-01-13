@@ -1453,11 +1453,13 @@ class VideoConverterGUI:
                 os.remove(file_path)
                 logger.info(f"Deleted file: {file_path}")
                 
+                # Get parent reference BEFORE deleting the tree item
+                parent = self.duplicates_tree.parent(tree_item)
+                
                 # Remove from tree view
                 self.duplicates_tree.delete(tree_item)
                 
                 # Update the parent group's file count
-                parent = self.duplicates_tree.parent(tree_item)
                 if parent:
                     # Get remaining children
                     children = self.duplicates_tree.get_children(parent)
