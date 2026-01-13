@@ -47,13 +47,9 @@ def run_command(command_args, **kwargs):
     # On Windows frozen apps, add CREATE_NO_WINDOW flag to prevent subprocess timeouts
     # This is critical for GUI apps built with console=False
     if sys.platform == 'win32' and getattr(sys, 'frozen', False):
-        if 'creationflags' not in kwargs:
-            CREATE_NO_WINDOW = 0x08000000
-            kwargs['creationflags'] = CREATE_NO_WINDOW
-        else:
-            # Merge with existing creation flags
-            CREATE_NO_WINDOW = 0x08000000
-            kwargs['creationflags'] = kwargs['creationflags'] | CREATE_NO_WINDOW
+        CREATE_NO_WINDOW = 0x08000000
+        # Ensure CREATE_NO_WINDOW is included alongside any existing creation flags
+        kwargs['creationflags'] = kwargs.get('creationflags', 0) | CREATE_NO_WINDOW
     
     try:
         result = subprocess.run(command_args, **kwargs)
