@@ -11,6 +11,21 @@ directory: "/path/to/videos"
 # Default: 1073741824 bytes (1GB)
 min_file_size: "1GB"
 
+# Paths to required dependencies (optional)
+# If not specified, dependencies will be searched in system PATH
+dependencies:
+  # Path to HandBrakeCLI executable
+  # Examples:
+  #   Linux/macOS: "/usr/bin/HandBrakeCLI"
+  #   Windows: "C:\\Program Files\\HandBrake\\HandBrakeCLI.exe"
+  handbrake: "HandBrakeCLI"
+  
+  # Path to ffprobe executable (part of FFmpeg)
+  # Examples:
+  #   Linux/macOS: "/usr/bin/ffprobe"
+  #   Windows: "C:\\ffmpeg\\bin\\ffprobe.exe"
+  ffprobe: "ffprobe"
+
 # Output format and encoder settings
 output:
   # Output container format: mkv, mp4

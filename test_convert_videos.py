@@ -268,6 +268,83 @@ class TestConfigLoading(unittest.TestCase):
             
             # Should return default config on error
             self.assertEqual(config['min_file_size'], '1GB')
+    
+    def test_load_config_with_dependencies(self):
+        """Test loading config with dependencies paths."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / 'config.yaml'
+            config_data = {
+                'directory': '/test/path',
+                'dependencies': {
+                    'handbrake': '/custom/path/HandBrakeCLI',
+                    'ffprobe': '/custom/path/ffprobe'
+                }
+            }
+            
+            with open(config_path, 'w') as f:
+                yaml.dump(config_data, f)
+            
+            config = convert_videos.load_config(config_path)
+            
+            self.assertEqual(config['dependencies']['handbrake'], '/custom/path/HandBrakeCLI')
+            self.assertEqual(config['dependencies']['ffprobe'], '/custom/path/ffprobe')
+    
+    def test_load_config_partial_dependencies(self):
+        """Test that partial dependencies config merges with defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / 'config.yaml'
+            config_data = {
+                'directory': '/test/path',
+                'dependencies': {
+                    'handbrake': '/custom/HandBrakeCLI'
+                }
+            }
+            
+            with open(config_path, 'w') as f:
+                yaml.dump(config_data, f)
+            
+            config = convert_videos.load_config(config_path)
+            
+            # Should have custom handbrake path
+            self.assertEqual(config['dependencies']['handbrake'], '/custom/HandBrakeCLI')
+            # But default ffprobe
+            self.assertEqual(config['dependencies']['ffprobe'], 'ffprobe')
+    
+    def test_load_config_null_dependencies(self):
+        """Test that null dependencies config restores defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / 'config.yaml'
+            config_data = {
+                'directory': '/test/path',
+                'dependencies': None
+            }
+            
+            with open(config_path, 'w') as f:
+                yaml.dump(config_data, f)
+            
+            config = convert_videos.load_config(config_path)
+            
+            # Should have default dependencies config
+            self.assertEqual(config['dependencies']['handbrake'], 'HandBrakeCLI')
+            self.assertEqual(config['dependencies']['ffprobe'], 'ffprobe')
+    
+    def test_load_config_invalid_dependencies_type(self):
+        """Test that invalid dependencies type falls back to defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / 'config.yaml'
+            config_data = {
+                'directory': '/test/path',
+                'dependencies': 'invalid_string'
+            }
+            
+            with open(config_path, 'w') as f:
+                yaml.dump(config_data, f)
+            
+            config = convert_videos.load_config(config_path)
+            
+            # Should fall back to default dependencies config
+            self.assertEqual(config['dependencies']['handbrake'], 'HandBrakeCLI')
+            self.assertEqual(config['dependencies']['ffprobe'], 'ffprobe')
 
 
 class TestGetCodec(unittest.TestCase):
@@ -675,6 +752,70 @@ class TestCheckDependencies(unittest.TestCase):
             convert_videos.check_dependencies()
         except SystemExit:
             self.fail("check_dependencies raised SystemExit unexpectedly")
+    
+    @patch('convert_videos.subprocess.run')
+    def test_check_dependencies_custom_paths(self, mock_run):
+        """Test dependency checking with custom paths."""
+        mock_run.return_value = MagicMock(returncode=0)
+        
+        custom_paths = {
+            'handbrake': '/custom/HandBrakeCLI',
+            'ffprobe': '/custom/ffprobe'
+        }
+        
+        # Should not raise exception
+        try:
+            convert_videos.check_dependencies(custom_paths)
+        except SystemExit:
+            self.fail("check_dependencies raised SystemExit unexpectedly")
+        
+        # Verify custom paths were used
+        calls = mock_run.call_args_list
+        self.assertEqual(len(calls), 2)
+        
+        # Check that custom paths were used in the calls
+        called_paths = [call[0][0][0] for call in calls]
+        self.assertIn('/custom/ffprobe', called_paths)
+        self.assertIn('/custom/HandBrakeCLI', called_paths)
+    
+    @patch('convert_videos.subprocess.run')
+    @patch('convert_videos.sys.exit')
+    def test_check_dependencies_custom_paths_missing(self, mock_exit, mock_run):
+        """Test that missing custom dependency paths trigger exit."""
+        mock_run.side_effect = FileNotFoundError()
+        
+        custom_paths = {
+            'handbrake': '/nonexistent/HandBrakeCLI',
+            'ffprobe': '/nonexistent/ffprobe'
+        }
+        
+        convert_videos.check_dependencies(custom_paths)
+        
+        mock_exit.assert_called_once_with(1)
+    
+    @patch('convert_videos.subprocess.run')
+    def test_check_dependencies_partial_custom_paths(self, mock_run):
+        """Test dependency checking with partial custom paths."""
+        mock_run.return_value = MagicMock(returncode=0)
+        
+        custom_paths = {
+            'handbrake': '/custom/HandBrakeCLI',
+            # ffprobe will use default
+        }
+        
+        # Should not raise exception
+        try:
+            convert_videos.check_dependencies(custom_paths)
+        except SystemExit:
+            self.fail("check_dependencies raised SystemExit unexpectedly")
+        
+        # Verify mixed paths were used
+        calls = mock_run.call_args_list
+        self.assertEqual(len(calls), 2)
+        
+        called_paths = [call[0][0][0] for call in calls]
+        self.assertIn('/custom/HandBrakeCLI', called_paths)
+        self.assertIn('ffprobe', called_paths)
 
 
 if __name__ == '__main__':
