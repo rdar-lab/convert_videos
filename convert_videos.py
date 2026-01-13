@@ -147,6 +147,10 @@ def load_config(config_path=None):
             'preset': 'medium',
             'quality': 24
         },
+        'dependencies': {
+            'handbrake': 'HandBrakeCLI',
+            'ffprobe': 'ffprobe'
+        },
         'preserve_original': False,
         'loop': False,
         'dry_run': False
@@ -184,6 +188,18 @@ def load_config(config_path=None):
                 # Invalid output type; fall back to defaults to avoid runtime errors
                 config['output'] = default_config['output']
         
+        # Merge dependencies settings if present, handling None and type safety
+        if 'dependencies' in user_config:
+            if user_config['dependencies'] is None:
+                # User explicitly set dependencies: null; restore default dependencies config
+                config['dependencies'] = default_config['dependencies']
+            elif isinstance(user_config['dependencies'], dict):
+                # Merge user-provided dependencies settings into the default dependencies config
+                config['dependencies'] = {**default_config['dependencies'], **user_config['dependencies']}
+            else:
+                # Invalid dependencies type; fall back to defaults to avoid runtime errors
+                config['dependencies'] = default_config['dependencies']
+        
         logger.info(f"Loaded configuration from {config_path}")
         return config
     except (OSError, IOError, yaml.YAMLError) as e:
@@ -191,19 +207,33 @@ def load_config(config_path=None):
         return default_config
 
 
-def check_dependencies():
-    """Check if required dependencies are installed."""
-    dependencies = ['ffprobe', 'HandBrakeCLI']
+def check_dependencies(dependency_paths=None):
+    """Check if required dependencies are installed.
+    
+    Args:
+        dependency_paths: Optional dict with 'handbrake' and 'ffprobe' keys
+                         specifying paths to executables. If None, uses default names.
+    """
+    if dependency_paths is None:
+        dependency_paths = {
+            'handbrake': 'HandBrakeCLI',
+            'ffprobe': 'ffprobe'
+        }
+    
+    dependencies = {
+        'ffprobe': dependency_paths.get('ffprobe', 'ffprobe'),
+        'HandBrakeCLI': dependency_paths.get('handbrake', 'HandBrakeCLI')
+    }
     missing = []
     
-    for dep in dependencies:
+    for name, path in dependencies.items():
         try:
-            subprocess.run([dep, '--version'], 
+            subprocess.run([path, '--version'], 
                           stdout=subprocess.PIPE, 
                           stderr=subprocess.PIPE,
                           check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
-            missing.append(dep)
+            missing.append(f"{name} (path: {path})")
     
     if missing:
         logger.error(f"Missing dependencies: {', '.join(missing)}")
@@ -211,11 +241,21 @@ def check_dependencies():
         sys.exit(1)
 
 
-def get_codec(file_path):
-    """Get the video codec of a file using ffprobe."""
+def get_codec(file_path, dependency_config=None):
+    """Get the video codec of a file using ffprobe.
+    
+    Args:
+        file_path: Path to the video file
+        dependency_config: Optional dict with 'ffprobe' key specifying path to ffprobe
+    """
+    if dependency_config is None:
+        dependency_config = {}
+    
+    ffprobe_path = dependency_config.get('ffprobe', 'ffprobe')
+    
     try:
         result = subprocess.run(
-            ['ffprobe', '-v', 'error', '-select_streams', 'v:0', 
+            [ffprobe_path, '-v', 'error', '-select_streams', 'v:0', 
              '-show_entries', 'stream=codec_name',
              '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
             stdout=subprocess.PIPE,
@@ -229,11 +269,21 @@ def get_codec(file_path):
         return None
 
 
-def get_duration(file_path):
-    """Get the duration of a video file in seconds."""
+def get_duration(file_path, dependency_config=None):
+    """Get the duration of a video file in seconds.
+    
+    Args:
+        file_path: Path to the video file
+        dependency_config: Optional dict with 'ffprobe' key specifying path to ffprobe
+    """
+    if dependency_config is None:
+        dependency_config = {}
+    
+    ffprobe_path = dependency_config.get('ffprobe', 'ffprobe')
+    
     try:
         result = subprocess.run(
-            ['ffprobe', '-v', 'error',
+            [ffprobe_path, '-v', 'error',
              '-show_entries', 'format=duration',
              '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
             stdout=subprocess.PIPE,
@@ -250,12 +300,13 @@ def get_duration(file_path):
         return 0
 
 
-def find_eligible_files(target_dir, min_size_bytes=None):
+def find_eligible_files(target_dir, min_size_bytes=None, dependency_config=None):
     """Find all video files >= min_size_bytes that are not H.265 encoded.
     
     Args:
         target_dir: Directory to scan for video files
         min_size_bytes: Minimum file size threshold in bytes (default: 1GB)
+        dependency_config: Optional dict with dependency paths
     """
     video_extensions = ['.mp4', '.mkv', '.mov', '.avi']
     if min_size_bytes is None:
@@ -281,7 +332,7 @@ def find_eligible_files(target_dir, min_size_bytes=None):
                     continue
                 
                 # Check codec
-                codec = get_codec(file_path)
+                codec = get_codec(file_path, dependency_config)
                 if codec != 'hevc':
                     eligible_files.append((file_size, file_path))
             except OSError:
@@ -292,14 +343,36 @@ def find_eligible_files(target_dir, min_size_bytes=None):
     return [f[1] for f in eligible_files]
 
 
-def convert_file(input_path, dry_run=False, preserve_original=False, output_config=None):
+def convert_file(input_path, dry_run=False, preserve_original=False, output_config=None, dependency_config=None):
     """Convert a video file using HandBrakeCLI with a configurable encoder.
     
     By default, uses an H.265 (HEVC) encoder, but the encoder, container
     format, preset, and quality can be customized via the output_config
     parameter (e.g., CPU x265 or GPU-accelerated nvenc_hevc).
+    
+    Args:
+        input_path: Path to input video file
+        dry_run: If True, only simulate conversion
+        preserve_original: If True, keep original file after conversion
+        output_config: Dict with output settings (format, encoder, preset, quality)
+        dependency_config: Dict with dependency paths (handbrake, ffprobe)
     """
     input_path = Path(input_path)
+    
+    # Default output configuration
+    if output_config is None:
+        output_config = {
+            'format': 'mkv',
+            'encoder': 'x265_10bit',
+            'preset': 'medium',
+            'quality': 24
+        }
+    
+    # Default dependency configuration
+    if dependency_config is None:
+        dependency_config = {}
+    
+    handbrake_path = dependency_config.get('handbrake', 'HandBrakeCLI')
     
     # Default output configuration
     if output_config is None:
@@ -364,7 +437,7 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     try:
         # Build HandBrakeCLI command based on encoder type
         cmd = [
-            'HandBrakeCLI',
+            handbrake_path,
             '-i', str(input_path),
             '-o', str(temp_output),
             '-f', output_format,
@@ -412,7 +485,7 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
                 subprocess.run(cmd, check=True)
         
         # Validate and finalize
-        return validate_and_finalize(input_path, temp_output, output_path, preserve_original)
+        return validate_and_finalize(input_path, temp_output, output_path, preserve_original, dependency_config)
         
     except subprocess.CalledProcessError as e:
         logger.error(f"Conversion failed for {input_path}: {e}")
@@ -424,10 +497,18 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         return False
 
 
-def validate_and_finalize(input_path, temp_output, final_output, preserve_original=False):
-    """Validate the conversion and finalize the output."""
-    src_duration = get_duration(input_path)
-    out_duration = get_duration(temp_output)
+def validate_and_finalize(input_path, temp_output, final_output, preserve_original=False, dependency_config=None):
+    """Validate the conversion and finalize the output.
+    
+    Args:
+        input_path: Path to original input file
+        temp_output: Path to temporary output file
+        final_output: Path to final output file
+        preserve_original: If True, keep original file
+        dependency_config: Dict with dependency paths
+    """
+    src_duration = get_duration(input_path, dependency_config)
+    out_duration = get_duration(temp_output, dependency_config)
     
     if src_duration == 0 or out_duration == 0:
         logger.error(f"❌ Could not determine duration: src={src_duration} vs out={out_duration}")
@@ -524,21 +605,15 @@ Examples:
     # Check for environment variable override
     preserve_original = preserve_original or os.getenv("VIDEO_CONVERTER_PRESERVE_ORIGINAL", "").lower() in ("1", "true", "yes")
     
-    # Parse min file size from config
-    try:
-        min_file_size = parse_file_size(config.get('min_file_size', '1GB'))
-    except ValueError as e:
-        logger.error(f"Invalid min_file_size in config: {e}")
-        sys.exit(1)
-    
     # Get output configuration
     output_config = config.get('output', {})
     
-    # Validate encoder type early
-    encoder_type = output_config.get('encoder', 'x265_10bit')
-    if not validate_encoder(encoder_type):
-        logger.error(f"Unsupported encoder type in config: '{encoder_type}'. Supported encoders: {', '.join(SUPPORTED_ENCODERS)}")
-        sys.exit(1)
+    # Get dependency paths configuration
+    dependency_config = config.get('dependencies', {})
+    
+    # ============================================
+    # ALL CONFIGURATION VALIDATIONS START HERE
+    # ============================================
     
     # Validate directory
     if not target_directory:
@@ -550,14 +625,49 @@ Examples:
         logger.error(f"Error: '{target_directory}' is not a valid directory.")
         sys.exit(1)
     
+    # Parse and validate min file size
+    try:
+        min_file_size = parse_file_size(config.get('min_file_size', '1GB'))
+    except ValueError as e:
+        logger.error(f"Invalid min_file_size in config: {e}")
+        sys.exit(1)
+    
+    # Validate output format
+    output_format = output_config.get('format', 'mkv')
+    if not validate_format(output_format):
+        logger.error(f"Unsupported output format in config: '{output_format}'. Supported formats: {', '.join(SUPPORTED_FORMATS)}")
+        sys.exit(1)
+    
+    # Validate encoder type
+    encoder_type = output_config.get('encoder', 'x265_10bit')
+    if not validate_encoder(encoder_type):
+        logger.error(f"Unsupported encoder type in config: '{encoder_type}'. Supported encoders: {', '.join(SUPPORTED_ENCODERS)}")
+        sys.exit(1)
+    
+    # Validate encoder preset
+    encoder_preset = output_config.get('preset', 'medium')
+    if not validate_preset(encoder_preset):
+        logger.error(f"Unsupported encoder preset in config: '{encoder_preset}'. Supported presets: {', '.join(SUPPORTED_PRESETS)}")
+        sys.exit(1)
+    
+    # Validate quality parameter
+    quality = output_config.get('quality', 24)
+    if not validate_quality(quality):
+        logger.error(f"Invalid quality value in config: {quality!r}. Must be an integer between 0 and 51.")
+        sys.exit(1)
+    
     # Check dependencies
-    check_dependencies()
+    check_dependencies(dependency_config)
+    
+    # ============================================
+    # ALL CONFIGURATION VALIDATIONS COMPLETED
+    # ============================================
     
     # Main processing loop
     while True:
         logger.info(f"Starting scan in {target_directory}")
         
-        files = find_eligible_files(target_directory, min_file_size)
+        files = find_eligible_files(target_directory, min_file_size, dependency_config)
         
         if not files:
             logger.info("No eligible files found.")
@@ -568,7 +678,7 @@ Examples:
             
             for file in files:
                 convert_file(file, dry_run=dry_run, preserve_original=preserve_original, 
-                           output_config=output_config)
+                           output_config=output_config, dependency_config=dependency_config)
         
         if not loop_mode:
             break
