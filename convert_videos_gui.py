@@ -478,10 +478,10 @@ class VideoConverterGUI:
             
             try:
                 # Call centralized download function
-                handbrake_path, ffprobe_path = convert_videos.download_dependencies(progress_callback)
+                handbrake_path, ffprobe_path, ffmpeg_path = convert_videos.download_dependencies(progress_callback)
                 
-                if handbrake_path and ffprobe_path:
-                    self.progress_queue.put(('download_complete', (handbrake_path, ffprobe_path)))
+                if handbrake_path and ffprobe_path and ffmpeg_path:
+                    self.progress_queue.put(('download_complete', (handbrake_path, ffprobe_path, ffmpeg_path)))
                 else:
                     self.progress_queue.put(('download_error', "Download failed. Check logs for details."))
                     
@@ -1070,17 +1070,20 @@ class VideoConverterGUI:
                     self.validation_label.config(text=data, foreground="blue")
                     
                 elif msg_type == 'download_complete':
-                    handbrake_path, ffprobe_path = data
+                    handbrake_path, ffprobe_path, ffmpeg_path = data
                     # Update the entry fields
                     self.handbrake_entry.delete(0, tk.END)
                     self.handbrake_entry.insert(0, handbrake_path)
                     self.ffprobe_entry.delete(0, tk.END)
                     self.ffprobe_entry.insert(0, ffprobe_path)
+                    self.ffmpeg_entry.delete(0, tk.END)
+                    self.ffmpeg_entry.insert(0, ffmpeg_path)
                     self.validation_label.config(text="✅ Dependencies downloaded successfully!", foreground="green")
                     messagebox.showinfo("Success", 
                                       f"Dependencies downloaded successfully!\n\n"
                                       f"HandBrakeCLI: {handbrake_path}\n"
-                                      f"ffprobe: {ffprobe_path}\n\n"
+                                      f"ffprobe: {ffprobe_path}\n"
+                                      f"ffmpeg: {ffmpeg_path}\n\n"
                                       f"The paths have been updated in the configuration.")
                     
                 elif msg_type == 'download_error':
