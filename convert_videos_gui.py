@@ -4,19 +4,22 @@ GUI for convert_videos - Headed mode with configuration editor, queue management
 """
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, scrolledtext
+from tkinter import ttk, filedialog, messagebox
 import threading
 import queue
 import yaml
 from pathlib import Path
 import logging
-import time
 import os
 
 import convert_videos
 
 
 logger = logging.getLogger(__name__)
+
+# Constants
+PROGRESS_UPDATE_INTERVAL_MS = 100  # Milliseconds between progress updates
+MAX_OUTPUT_FILE_ATTEMPTS = 100  # Maximum number of attempts to find unique output filename
 
 
 class ConversionResult:
@@ -436,7 +439,7 @@ class VideoConverterGUI:
             return
         
         def processing_thread():
-            for file_path in self.file_queue[:]:  # Copy list to avoid modification issues
+            for file_path in list(self.file_queue):  # Create a copy to avoid modification issues
                 if self.stop_requested:
                     self.progress_queue.put(('stopped', None))
                     break
@@ -466,7 +469,7 @@ class VideoConverterGUI:
                         if not output_path.exists():
                             # Try with counter
                             counter = 1
-                            while counter < 100:
+                            while counter < MAX_OUTPUT_FILE_ATTEMPTS:
                                 output_path = file_path.with_name(f"{base_name} ({counter}).{output_format}")
                                 if output_path.exists():
                                     break
@@ -570,7 +573,7 @@ class VideoConverterGUI:
             pass
         
         # Schedule next update
-        self.root.after(100, self.update_progress)
+        self.root.after(PROGRESS_UPDATE_INTERVAL_MS, self.update_progress)
         
     def add_result_to_tree(self, result):
         """Add a conversion result to the results tree."""

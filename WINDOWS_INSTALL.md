@@ -10,7 +10,8 @@ You need to install the following dependencies:
 
 1. Download Python from [python.org](https://www.python.org/downloads/)
 2. During installation, make sure to check "Add Python to PATH"
-3. Verify installation by opening Command Prompt or PowerShell and running:
+3. **For GUI mode**: Tkinter is included with Python on Windows by default
+4. Verify installation by opening Command Prompt or PowerShell and running:
    ```cmd
    python --version
    ```
@@ -78,7 +79,22 @@ choco install handbrake-cli
 
 ## Usage
 
-### Basic Usage
+### GUI Mode (Headed Mode) - Recommended for Desktop Use
+
+Run the application with a graphical user interface:
+```cmd
+python convert_videos.py --headed
+```
+
+The GUI provides:
+- Easy configuration editing with validation
+- Visual queue of files to process
+- Real-time progress monitoring
+- Results dashboard showing space savings and conversion status
+
+**Note**: GUI mode requires a display and does not run in Docker.
+
+### Basic Usage (Command Line)
 
 Convert videos in a specific folder:
 ```cmd
