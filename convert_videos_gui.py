@@ -818,13 +818,14 @@ class VideoConverterGUI:
             # Start process with output capture
             if sys.platform == 'win32':
                 BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+                CREATE_NO_WINDOW = 0x08000000  # Prevents console window flash
                 self.current_process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     universal_newlines=True,
                     bufsize=1,
-                    creationflags=BELOW_NORMAL_PRIORITY_CLASS
+                    creationflags=BELOW_NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW
                 )
             else:
                 try:
