@@ -571,10 +571,11 @@ def main():
         epilog="""
 Examples:
   python convert_videos.py                          # Launch GUI (default)
+  python convert_videos.py --gui                    # Launch GUI explicitly  
+  python convert_videos.py --config config.yaml     # Run with config (background mode)
   python convert_videos.py --background /path/to/videos
   python convert_videos.py --background --dry-run C:\\Videos
   python convert_videos.py --background --loop /path/to/videos
-  python convert_videos.py --config config.yaml
         """
     )
     parser.add_argument('directory', 
@@ -594,20 +595,28 @@ Examples:
     parser.add_argument('--background',
                        action='store_true',
                        help='Run in background mode (CLI, no GUI) - for Docker/service use')
+    parser.add_argument('--gui',
+                       action='store_true',
+                       help='Run in GUI mode (default when no arguments provided)')
     
     args = parser.parse_args()
     
-    # Default to headed mode unless --background is specified
-    # Also check if loop mode or directory is provided (implies background mode)
-    if not args.background and not args.loop and not args.directory:
-        # Launch GUI mode (default)
+    # Determine whether to launch GUI or background mode
+    # GUI mode if:
+    # 1. --gui flag is explicitly provided, OR
+    # 2. No arguments at all (len(sys.argv) == 1)
+    # Background mode otherwise
+    launch_gui = args.gui or (len(sys.argv) == 1 and not args.background)
+    
+    if launch_gui and not args.background:
+        # Launch GUI mode
         try:
             import convert_videos_gui
             convert_videos_gui.main()
         except ImportError as e:
             logger.error(f"Failed to import GUI module: {e}")
             logger.error("Make sure convert_videos_gui.py is available and tkinter is installed")
-            logger.error("To run in background mode, use: --background")
+            logger.error("To run in background mode, use: --background or provide arguments")
             sys.exit(1)
         return
     

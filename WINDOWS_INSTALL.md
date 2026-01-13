@@ -81,7 +81,7 @@ choco install handbrake-cli
 
 ### GUI Mode (Default) - Recommended for Desktop Use
 
-Run the application with a graphical user interface (default):
+Run the application with a graphical user interface (default when no arguments):
 ```cmd
 python convert_videos.py
 ```
@@ -92,49 +92,54 @@ The GUI provides:
 - Real-time progress monitoring
 - Results dashboard showing space savings and conversion status
 
-**Note**: GUI mode requires a display. For headless/server use, see Background Mode below.
+**Note**: GUI mode requires a display. For headless/server use or with config files, see Background Mode below.
 
 ### Background Mode (Command Line)
 
-For command-line operation, add the `--background` flag:
+Background mode is used automatically when providing arguments:
 
 Convert videos in a specific folder:
 ```cmd
-python convert_videos.py --background "C:\Path\To\Your\Videos"
+python convert_videos.py "C:\Path\To\Your\Videos"
+```
+
+Use a configuration file:
+```cmd
+python convert_videos.py --config config.yaml
 ```
 
 ### Dry Run Mode
 
 See what would be converted without actually converting:
 ```cmd
-python convert_videos.py --background --dry-run "C:\Path\To\Your\Videos"
+python convert_videos.py --dry-run "C:\Path\To\Your\Videos"
 ```
 
 ### Continuous Monitoring
 
 Run in a loop that checks for new files every hour:
 ```cmd
-python convert_videos.py --background --loop "C:\Path\To\Your\Videos"
+python convert_videos.py --loop "C:\Path\To\Your\Videos"
 ```
 
 ### Preserve Original Files
 
 Keep original files after successful conversion (default is to remove them):
 ```cmd
-python convert_videos.py --background --preserve-original "C:\Path\To\Your\Videos"
+python convert_videos.py --preserve-original "C:\Path\To\Your\Videos"
 ```
 
 Or set an environment variable:
 ```cmd
 set VIDEO_CONVERTER_PRESERVE_ORIGINAL=true
-python convert_videos.py --background "C:\Path\To\Your\Videos"
+python convert_videos.py "C:\Path\To\Your\Videos"
 ```
 
 ### Using PowerShell
 
 In PowerShell, you can use forward slashes or backslashes:
 ```powershell
-python convert_videos.py --background "C:/Path/To/Your/Videos"
+python convert_videos.py "C:/Path/To/Your/Videos"
 ```
 
 ## What It Does
@@ -160,7 +165,7 @@ The script will:
 4. Set the action to run:
    ```
    Program: python
-   Arguments: convert_videos.py --background --loop "C:\Path\To\Your\Videos"
+   Arguments: convert_videos.py --loop "C:\Path\To\Your\Videos"
    Start in: C:\path\to\convert_videos
    ```
 
@@ -169,7 +174,7 @@ The script will:
 1. Download NSSM from [nssm.cc](https://nssm.cc/)
 2. Install the service:
    ```cmd
-   nssm install ConvertVideos "C:\Path\To\Python\python.exe" "C:\path\to\convert_videos\convert_videos.py" --background --loop "C:\Videos"
+   nssm install ConvertVideos "C:\Path\To\Python\python.exe" "C:\path\to\convert_videos\convert_videos.py" --loop "C:\Videos"
    ```
 3. Start the service:
    ```cmd

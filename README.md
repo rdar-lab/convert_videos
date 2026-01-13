@@ -14,14 +14,14 @@ Benefits:
 
 ### Headed Mode (GUI) - **DEFAULT**
 
-The default mode launches a graphical user interface for easy configuration and monitoring:
+The default mode launches a graphical user interface when no arguments are provided:
 
 ```bash
-# Launch GUI (default)
+# Launch GUI (default - no arguments)
 python convert_videos.py
 
-# Or explicitly
-python convert_videos.py --config config.yaml
+# Or explicitly with --gui flag
+python convert_videos.py --gui
 ```
 
 The GUI provides:
@@ -31,14 +31,20 @@ The GUI provides:
 - **Live Progress**: Monitor current file being processed with progress indicator
 - **Results Dashboard**: View completed conversions with success/failure status, error messages, and space savings
 
-**Note**: GUI mode requires a display and tkinter. For headless/server use, see Background Mode below.
+**Note**: GUI mode requires a display and tkinter. For headless/server use or when using config files, see Background Mode below.
 
 ### Background Mode (CLI)
 
-For command-line, Docker, or headless server use, add the `--background` flag:
+Background mode is used when providing arguments (directory, config, flags) or explicitly with `--background`:
 
 ```bash
-# Single run in background mode
+# Run with config file (background mode)
+python convert_videos.py --config config.yaml
+
+# Single run with directory
+python convert_videos.py /path/to/videos
+
+# With --background flag explicitly
 python convert_videos.py --background /path/to/videos
 
 # Continuous monitoring (scans every hour)
@@ -103,26 +109,26 @@ See **[WINDOWS_INSTALL.md](WINDOWS_INSTALL.md)** for detailed Windows installati
 # Install Python dependencies:
 pip install -r requirements.txt
 
-# Run with GUI (default):
+# Run with GUI (default - no arguments):
 python convert_videos.py
 
-# Or run in background mode from command line:
-python convert_videos.py --background "C:\Path\To\Videos"
+# Or run with directory (background mode):
+python convert_videos.py "C:\Path\To\Videos"
 
-# Run continuously in background:
-python convert_videos.py --background --loop "C:\Path\To\Videos"
-
-# Dry run to see what would be converted:
-python convert_videos.py --background --dry-run "C:\Path\To\Videos"
-
-# Keep original files after conversion:
-python convert_videos.py --background --preserve-original "C:\Path\To\Videos"
-
-# Use a configuration file with GUI:
+# Run with config file (background mode):
 python convert_videos.py --config config.yaml
 
-# Use a configuration file in background mode:
-python convert_videos.py --background --config config.yaml "C:\Path\To\Videos"
+# Run continuously:
+python convert_videos.py --loop "C:\Path\To\Videos"
+
+# Dry run to see what would be converted:
+python convert_videos.py --dry-run "C:\Path\To\Videos"
+
+# Keep original files after conversion:
+python convert_videos.py --preserve-original "C:\Path\To\Videos"
+
+# Explicitly use background mode:
+python convert_videos.py --background "C:\Path\To\Videos"
 ```
 
 ### Linux/macOS (Without Docker)
@@ -142,17 +148,23 @@ pip3 install -r requirements.txt
 
 **Run the script:**
 ```bash
-# Run with GUI (default):
+# Run with GUI (default - no arguments):
 python3 convert_videos.py
 
-# Or run in background mode from command line:
-python3 convert_videos.py --background /path/to/videos
+# Run with directory (background mode):
+python3 convert_videos.py /path/to/videos
 
-# Or run continuously in background:
-python3 convert_videos.py --background --loop /path/to/videos
+# Run with config file (background mode):
+python3 convert_videos.py --config config.yaml
+
+# Run continuously:
+python3 convert_videos.py --loop /path/to/videos
 
 # Keep original files after conversion:
-python3 convert_videos.py --background --preserve-original /path/to/videos
+python3 convert_videos.py --preserve-original /path/to/videos
+
+# Explicitly use background mode:
+python3 convert_videos.py --background /path/to/videos
 ```
 
 ### Docker (Linux)
