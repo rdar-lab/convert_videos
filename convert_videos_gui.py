@@ -52,6 +52,8 @@ class VideoConverterGUI:
         self.config_file_path = Path('config.yaml')
         
         # Log bundled dependency paths for debugging
+        # Note: These logs go to the log file (not console) and are useful for troubleshooting
+        # standalone executables where bundled dependencies should be auto-detected
         deps = self.config.get('dependencies', {})
         logger.info(f"GUI initialized with HandBrakeCLI path: {deps.get('handbrake')}")
         logger.info(f"GUI initialized with ffprobe path: {deps.get('ffprobe')}")
