@@ -8,18 +8,14 @@ import tempfile
 import os
 from pathlib import Path
 
-try:
-    from duplicate_detector import (
-        DuplicateResult, hamming_distance, create_comparison_thumbnail
-    )
-    from PIL import Image
-    import imagehash
-    DUPLICATE_DETECTION_AVAILABLE = True
-except ImportError:
-    DUPLICATE_DETECTION_AVAILABLE = False
+from duplicate_detector import (
+    DuplicateResult, hamming_distance, create_comparison_thumbnail,
+    MAX_HAMMING_DISTANCE_ERROR
+)
+from PIL import Image
+import imagehash
 
 
-@unittest.skipIf(not DUPLICATE_DETECTION_AVAILABLE, "Duplicate detection dependencies not available")
 class TestDuplicateResult(unittest.TestCase):
     """Test DuplicateResult class."""
     
@@ -54,7 +50,6 @@ class TestDuplicateResult(unittest.TestCase):
         self.assertIsNone(result.thumbnail_path)
 
 
-@unittest.skipIf(not DUPLICATE_DETECTION_AVAILABLE, "Duplicate detection dependencies not available")
 class TestHammingDistance(unittest.TestCase):
     """Test hamming distance calculation."""
     
@@ -72,10 +67,9 @@ class TestHammingDistance(unittest.TestCase):
     def test_hamming_distance_invalid_input(self):
         """Test hamming distance with invalid input."""
         distance = hamming_distance(None, "abc123")
-        self.assertEqual(distance, 999)  # Should return large distance on error
+        self.assertEqual(distance, MAX_HAMMING_DISTANCE_ERROR)  # Should return error constant on error
 
 
-@unittest.skipIf(not DUPLICATE_DETECTION_AVAILABLE, "Duplicate detection dependencies not available")
 class TestComparisonThumbnail(unittest.TestCase):
     """Test comparison thumbnail creation."""
     

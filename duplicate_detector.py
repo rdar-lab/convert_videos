@@ -16,6 +16,9 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+# Constants
+MAX_HAMMING_DISTANCE_ERROR = 999  # Return value when hamming distance calculation fails
+
 
 class DuplicateResult:
     """Represents a group of duplicate videos."""
@@ -34,12 +37,12 @@ def hamming_distance(hash1, hash2):
         hash2: Second hash string
         
     Returns:
-        int: Number of differing bits, or 999 on error
+        int: Number of differing bits, or MAX_HAMMING_DISTANCE_ERROR on error
     """
     try:
         return bin(int(str(hash1), 16) ^ int(str(hash2), 16)).count("1")
     except (ValueError, TypeError):
-        return 999  # Return large distance on error
+        return MAX_HAMMING_DISTANCE_ERROR  # Return large distance on error
 
 
 def create_comparison_thumbnail(thumbnail_paths):
