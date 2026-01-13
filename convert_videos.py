@@ -618,6 +618,10 @@ Examples:
             logger.error("Make sure convert_videos_gui.py is available and tkinter is installed")
             logger.error("To run in background mode, use: --background or provide arguments")
             sys.exit(1)
+        except Exception as e:
+            logger.error(f"Failed to launch GUI: {e}")
+            logger.error("To run in background mode, use: --background or provide arguments")
+            sys.exit(1)
         return
     
     # Load configuration file
