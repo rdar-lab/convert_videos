@@ -60,6 +60,7 @@ class VideoConverterGUI:
         # Duplicate detection state
         self.duplicate_results = []
         self.duplicate_scan_running = False
+        self.duplicate_progress_queue = queue.Queue()  # Separate queue for duplicate detection
         
         # Thread communication
         self.progress_queue = queue.Queue()
@@ -72,8 +73,9 @@ class VideoConverterGUI:
         # Bind tab switch event to regenerate config
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         
-        # Start progress update loop
+        # Start progress update loops
         self.update_progress()
+        self.update_duplicate_progress()
         
     def create_ui(self):
         """Create the main UI with tabs."""
@@ -1089,8 +1091,20 @@ class VideoConverterGUI:
                 elif msg_type == 'download_error':
                     self.validation_label.config(text="❌ Download failed", foreground="red")
                     messagebox.showerror("Download Error", f"Failed to download dependencies:\n\n{data}")
+                    
+        except queue.Empty:
+            pass
+        
+        # Schedule next update
+        self.root.after(PROGRESS_UPDATE_INTERVAL_MS, self.update_progress)
+    
+    def update_duplicate_progress(self):
+        """Process messages from the duplicate detection thread."""
+        try:
+            while True:
+                msg_type, data = self.duplicate_progress_queue.get_nowait()
                 
-                elif msg_type == 'dup_status':
+                if msg_type == 'dup_status':
                     self.dup_status_label.config(text=data, foreground="blue")
                 
                 elif msg_type == 'dup_complete':
@@ -1139,7 +1153,7 @@ class VideoConverterGUI:
             pass
         
         # Schedule next update
-        self.root.after(PROGRESS_UPDATE_INTERVAL_MS, self.update_progress)
+        self.root.after(PROGRESS_UPDATE_INTERVAL_MS, self.update_duplicate_progress)
         
     def add_result_to_tree(self, result):
         """Add a conversion result to the results tree."""
@@ -1215,7 +1229,7 @@ class VideoConverterGUI:
                 
                 # Progress callback
                 def progress_callback(message):
-                    self.progress_queue.put(('dup_status', message))
+                    self.duplicate_progress_queue.put(('dup_status', message))
                 
                 # Run duplicate detection
                 duplicate_groups = duplicate_detector.scan_for_duplicates(
@@ -1226,11 +1240,11 @@ class VideoConverterGUI:
                     progress_callback=progress_callback
                 )
                 
-                self.progress_queue.put(('dup_complete', duplicate_groups))
+                self.duplicate_progress_queue.put(('dup_complete', duplicate_groups))
             
             except Exception as e:
                 logger.error(f"Duplicate scan error: {repr(e)}")
-                self.progress_queue.put(('dup_error', repr(e)))
+                self.duplicate_progress_queue.put(('dup_error', repr(e)))
         
         threading.Thread(target=scan_thread, daemon=True).start()
     
