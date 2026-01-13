@@ -8,6 +8,41 @@ Benefits:
 2. Significant storage savings (typically 40-60% smaller files)
 3. Works on Windows, Linux, and macOS
 4. Configurable via YAML configuration file or command line arguments
+5. **NEW**: Headed mode with GUI for easy configuration and monitoring
+
+## Modes of Operation
+
+### Headed Mode (GUI) - NEW!
+
+Run with a graphical user interface for easy configuration and monitoring:
+
+```bash
+python convert_videos.py --headed
+```
+
+The GUI provides:
+- **Configuration Editor**: Edit all settings with validation and save to config file
+- **Configuration Validation**: Real-time validation with error messages
+- **File Queue**: See all files waiting to be processed
+- **Live Progress**: Monitor current file being processed with progress indicator
+- **Results Dashboard**: View completed conversions with success/failure status, error messages, and space savings
+
+**Note**: Headed mode runs directly on your system (not in Docker) and requires a display.
+
+### Background Mode (CLI)
+
+Run as a command-line tool or service (Docker/loop mode):
+
+```bash
+# Single run
+python convert_videos.py /path/to/videos
+
+# Continuous monitoring (scans every hour)
+python convert_videos.py --loop /path/to/videos
+
+# Docker mode (runs in background)
+docker run -d -v /path/to/videos:/data rdxmaster/convert_videos
+```
 
 ## Configuration
 
@@ -64,7 +99,10 @@ See **[WINDOWS_INSTALL.md](WINDOWS_INSTALL.md)** for detailed Windows installati
 # Install Python dependencies:
 pip install -r requirements.txt
 
-# Then run:
+# Run with GUI (headed mode):
+python convert_videos.py --headed
+
+# Or run from command line:
 python convert_videos.py "C:\Path\To\Videos"
 
 # Or run continuously:
@@ -85,18 +123,22 @@ python convert_videos.py --config config.yaml
 **Install dependencies:**
 ```bash
 # Ubuntu/Debian
-sudo apt-get install python3 python3-pip ffmpeg handbrake-cli
+sudo apt-get install python3 python3-pip python3-tk ffmpeg handbrake-cli
 
 # Install Python dependencies
 pip3 install -r requirements.txt
 
 # macOS (using Homebrew)
-brew install python3 ffmpeg handbrake
+brew install python3 ffmpeg handbrake python-tk
 pip3 install -r requirements.txt
 ```
 
 **Run the script:**
 ```bash
+# Run with GUI (headed mode):
+python3 convert_videos.py --headed
+
+# Or run from command line:
 python3 convert_videos.py /path/to/videos
 
 # Or run continuously:

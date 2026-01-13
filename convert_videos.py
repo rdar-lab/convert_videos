@@ -574,6 +574,7 @@ Examples:
   python convert_videos.py --dry-run C:\\Videos
   python convert_videos.py --loop /path/to/videos
   python convert_videos.py --config config.yaml
+  python convert_videos.py --headed
         """
     )
     parser.add_argument('directory', 
@@ -590,8 +591,23 @@ Examples:
     parser.add_argument('--preserve-original', 
                        action='store_true',
                        help='Keep original files after successful conversion (default: remove)')
+    parser.add_argument('--headed',
+                       action='store_true',
+                       help='Run in headed mode with GUI (does not run in Docker)')
     
     args = parser.parse_args()
+    
+    # Check if headed mode is requested
+    if args.headed:
+        # Launch GUI mode
+        try:
+            import convert_videos_gui
+            convert_videos_gui.main()
+        except ImportError as e:
+            logger.error(f"Failed to import GUI module: {e}")
+            logger.error("Make sure convert_videos_gui.py is available and tkinter is installed")
+            sys.exit(1)
+        return
     
     # Load configuration file
     config = load_config(args.config)
