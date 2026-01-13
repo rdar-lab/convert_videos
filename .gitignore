@@ -47,3 +47,7 @@ htmlcov/
 
 # Configuration
 config.yaml
+
+# PyInstaller build artifacts
+*.spec
+external_binaries/
