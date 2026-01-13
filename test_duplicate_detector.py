@@ -22,32 +22,38 @@ class TestDuplicateResult(unittest.TestCase):
     def test_duplicate_result_creation(self):
         """Test creating a duplicate result."""
         files = ["/path/to/video1.mp4", "/path/to/video2.mp4"]
+        file_thumbnails = {
+            "/path/to/video1.mp4": "/tmp/thumb1.jpg",
+            "/path/to/video2.mp4": "/tmp/thumb2.jpg"
+        }
         result = DuplicateResult(
             hash_value="abc123",
             files=files,
             hamming_distance=3,
-            thumbnail_path="/path/to/thumb.jpg"
+            file_thumbnails=file_thumbnails,
+            comparison_thumbnail="/tmp/comparison.jpg"
         )
         
         self.assertEqual(result.hash_value, "abc123")
         self.assertEqual(result.files, files)
         self.assertEqual(result.hamming_distance, 3)
-        self.assertEqual(result.thumbnail_path, "/path/to/thumb.jpg")
+        self.assertEqual(result.file_thumbnails, file_thumbnails)
+        self.assertEqual(result.comparison_thumbnail, "/tmp/comparison.jpg")
     
-    def test_duplicate_result_without_thumbnail(self):
-        """Test creating a duplicate result without thumbnail."""
+    def test_duplicate_result_without_thumbnails(self):
+        """Test creating a duplicate result without thumbnails."""
         files = ["/path/to/video1.mp4", "/path/to/video2.mp4", "/path/to/video3.mp4"]
         result = DuplicateResult(
             hash_value="def456",
             files=files,
-            hamming_distance=5,
-            thumbnail_path=None
+            hamming_distance=5
         )
         
         self.assertEqual(result.hash_value, "def456")
         self.assertEqual(len(result.files), 3)
         self.assertEqual(result.hamming_distance, 5)
-        self.assertIsNone(result.thumbnail_path)
+        self.assertEqual(result.file_thumbnails, {})
+        self.assertIsNone(result.comparison_thumbnail)
 
 
 class TestHammingDistance(unittest.TestCase):

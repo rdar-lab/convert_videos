@@ -373,15 +373,15 @@ class VideoConverterGUI:
         tree_scroll_x.config(command=self.duplicates_tree.xview)
         
         # Configure columns
-        self.duplicates_tree.heading('#0', text='Group')
+        self.duplicates_tree.heading('#0', text='Group / File')
         self.duplicates_tree.heading('Distance', text='Hamming Distance')
         self.duplicates_tree.heading('Files', text='File Count')
-        self.duplicates_tree.heading('Thumbnail', text='Has Thumbnail')
+        self.duplicates_tree.heading('Thumbnail', text='Thumbnail Path')
         
-        self.duplicates_tree.column('#0', width=100, minwidth=80)
+        self.duplicates_tree.column('#0', width=200, minwidth=150)
         self.duplicates_tree.column('Distance', width=120, minwidth=100)
         self.duplicates_tree.column('Files', width=100, minwidth=80)
-        self.duplicates_tree.column('Thumbnail', width=120, minwidth=100)
+        self.duplicates_tree.column('Thumbnail', width=300, minwidth=200)
         
         # Pack
         self.duplicates_tree.pack(side='left', fill='both', expand=True)
@@ -1124,16 +1124,19 @@ class VideoConverterGUI:
                     self.duplicates_tree.delete(*self.duplicates_tree.get_children())
                     
                     for i, group in enumerate(duplicate_groups):
+                        # Show comparison thumbnail path for group if available
+                        group_thumb = group.comparison_thumbnail if group.comparison_thumbnail else ''
                         group_id = self.duplicates_tree.insert('', 'end', 
                             text=f'Group {i+1}',
-                            values=(group.hamming_distance, len(group.files), 
-                                   'Yes' if group.thumbnail_path else 'No'))
+                            values=(group.hamming_distance, len(group.files), group_thumb))
                         
-                        # Add files as children
+                        # Add files as children with their individual thumbnail paths
                         for file_path in group.files:
+                            file_name = str(Path(file_path).name)
+                            thumbnail_path = group.file_thumbnails.get(str(file_path), '')
                             self.duplicates_tree.insert(group_id, 'end', 
-                                text=str(Path(file_path).name),
-                                values=('', '', ''))
+                                text=file_name,
+                                values=('', '', thumbnail_path))
                     
                     self.dup_progress_bar.stop()
                     self.dup_status_label.config(
@@ -1265,11 +1268,33 @@ class VideoConverterGUI:
             if messagebox.askyesno("Clear Results", "Are you sure you want to clear duplicate results?"):
                 # Clean up thumbnail files
                 for result in self.duplicate_results:
-                    if result.thumbnail_path and os.path.exists(result.thumbnail_path):
+                    # Clean up comparison thumbnail
+                    if result.comparison_thumbnail and os.path.exists(result.comparison_thumbnail):
                         try:
-                            os.unlink(result.thumbnail_path)
+                            os.unlink(result.comparison_thumbnail)
                         except Exception:
                             pass
+                    
+                    # Clean up individual file thumbnails
+                    for file_path, thumb_path in result.file_thumbnails.items():
+                        if thumb_path and os.path.exists(thumb_path):
+                            try:
+                                os.unlink(thumb_path)
+                            except Exception:
+                                pass
+                    
+                    # Try to remove the temp directory if empty
+                    if result.file_thumbnails:
+                        # Get directory from any thumbnail path
+                        for thumb_path in result.file_thumbnails.values():
+                            if thumb_path:
+                                temp_dir = Path(thumb_path).parent
+                                try:
+                                    if temp_dir.exists() and temp_dir.name.startswith('video_dup_'):
+                                        temp_dir.rmdir()
+                                except Exception:
+                                    pass
+                                break
                 
                 self.duplicate_results.clear()
                 self.duplicates_tree.delete(*self.duplicates_tree.get_children())

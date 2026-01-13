@@ -22,11 +22,12 @@ MAX_HAMMING_DISTANCE_ERROR = 999  # Return value when hamming distance calculati
 
 class DuplicateResult:
     """Represents a group of duplicate videos."""
-    def __init__(self, hash_value, files, hamming_distance, thumbnail_path=None):
+    def __init__(self, hash_value, files, hamming_distance, file_thumbnails=None, comparison_thumbnail=None):
         self.hash_value = hash_value
         self.files = files  # List of file paths
         self.hamming_distance = hamming_distance  # Max distance within the group
-        self.thumbnail_path = thumbnail_path  # Path to comparison thumbnail
+        self.file_thumbnails = file_thumbnails or {}  # Dict mapping file path to thumbnail path
+        self.comparison_thumbnail = comparison_thumbnail  # Path to side-by-side comparison thumbnail
 
 
 def hamming_distance(hash1, hash2):
@@ -117,6 +118,8 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
     
     # Extract middle frames and calculate hashes
     video_hashes = []
+    # Create a temp directory for storing thumbnails
+    temp_dir = Path(tempfile.mkdtemp(prefix='video_dup_'))
     
     for i, video_file in enumerate(video_files):
         try:
@@ -135,14 +138,13 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
             duration = float(result.stdout.strip())
             midpoint = duration / 2
             
-            # Extract middle frame
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_frame:
-                temp_frame_path = temp_frame.name
+            # Extract middle frame to temp directory with unique name
+            temp_frame_path = temp_dir / f"{Path(video_file).stem}_{i}.jpg"
             
             extract_cmd = [
                 ffmpeg_path, '-ss', str(midpoint), '-i', str(video_file),
                 '-vframes', '1', '-q:v', '2', '-f', 'image2',
-                temp_frame_path, '-y'
+                str(temp_frame_path), '-y'
             ]
             subprocess.run(extract_cmd, capture_output=True, timeout=30, check=True)
             
@@ -150,7 +152,7 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
             if os.path.exists(temp_frame_path) and os.path.getsize(temp_frame_path) > 0:
                 img = Image.open(temp_frame_path)
                 hash_value = imagehash.phash(img)
-                video_hashes.append((str(hash_value), video_file, temp_frame_path))
+                video_hashes.append((str(hash_value), video_file, str(temp_frame_path)))
             else:
                 logger.warning(f"Failed to extract frame from {video_file}")
                 if os.path.exists(temp_frame_path):
@@ -196,11 +198,16 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
                 processed_files.add(f2)
         
         if len(group_files) > 1:
+            # Create dict mapping files to their thumbnail paths
+            file_thumbnails = {}
+            for file, thumb in zip(group_files, group_thumbs):
+                file_thumbnails[str(file)] = thumb
+            
             # Create combined thumbnail if multiple files
-            thumbnail_path = None
+            comparison_thumbnail = None
             try:
                 if len(group_thumbs) >= 2:
-                    thumbnail_path = create_comparison_thumbnail(group_thumbs[:2])
+                    comparison_thumbnail = create_comparison_thumbnail(group_thumbs[:2])
             except Exception as e:
                 logger.error(f"Failed to create comparison thumbnail: {repr(e)}")
             
@@ -208,16 +215,12 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
                 hash_value=h1,
                 files=group_files,
                 hamming_distance=max_dist_in_group,
-                thumbnail_path=thumbnail_path
+                file_thumbnails=file_thumbnails,
+                comparison_thumbnail=comparison_thumbnail
             ))
             processed_files.add(f1)
     
-    # Clean up temp files
-    for _, _, thumb_path in video_hashes:
-        if os.path.exists(thumb_path):
-            try:
-                os.unlink(thumb_path)
-            except Exception:
-                pass
+    # Don't clean up temp files - they will be used by GUI
+    # GUI is responsible for cleanup
     
     return duplicate_groups
