@@ -14,19 +14,9 @@ import os
 import subprocess
 import re
 import tempfile
-from collections import defaultdict
-import itertools
-from io import BytesIO
-import base64
 
 import convert_videos
-
-try:
-    import imagehash
-    from PIL import Image, ImageTk
-    DUPLICATE_DETECTION_AVAILABLE = True
-except ImportError:
-    DUPLICATE_DETECTION_AVAILABLE = False
+import duplicate_detector
 
 
 logger = logging.getLogger(__name__)
@@ -46,15 +36,6 @@ class ConversionResult:
         self.new_size = new_size
         self.space_saved = original_size - new_size if success else 0
         self.space_saved_percent = (self.space_saved / original_size * 100) if original_size > 0 else 0
-
-
-class DuplicateResult:
-    """Represents a group of duplicate videos."""
-    def __init__(self, hash_value, files, hamming_distance, thumbnail_path=None):
-        self.hash_value = hash_value
-        self.files = files  # List of file paths
-        self.hamming_distance = hamming_distance  # Max distance within the group
-        self.thumbnail_path = thumbnail_path  # Path to comparison thumbnail
 
 
 class VideoConverterGUI:
@@ -116,12 +97,9 @@ class VideoConverterGUI:
         self.create_results_tab()
         
         # Detect Duplicates Tab
-        if DUPLICATE_DETECTION_AVAILABLE:
-            self.duplicates_tab = ttk.Frame(self.notebook)
-            self.notebook.add(self.duplicates_tab, text="Detect Duplicates")
-            self.create_duplicates_tab()
-        else:
-            logger.warning("Duplicate detection not available - imagehash and/or PIL not installed")
+        self.duplicates_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.duplicates_tab, text="Detect Duplicates")
+        self.create_duplicates_tab()
         
     def create_config_tab(self):
         """Create the configuration editor tab."""
@@ -204,9 +182,15 @@ class VideoConverterGUI:
         self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
         ttk.Button(deps_frame, text="Browse...", command=self.browse_ffprobe).grid(row=1, column=2, pady=5)
         
+        ttk.Label(deps_frame, text="ffmpeg:").grid(row=2, column=0, sticky='w', pady=5)
+        self.ffmpeg_entry = ttk.Entry(deps_frame, width=40)
+        self.ffmpeg_entry.grid(row=2, column=1, padx=5, pady=5)
+        self.ffmpeg_entry.insert(0, dependency_config.get('ffmpeg') or 'ffmpeg')
+        ttk.Button(deps_frame, text="Browse...", command=self.browse_ffmpeg).grid(row=2, column=2, pady=5)
+        
         # Download dependencies button
         ttk.Button(deps_frame, text="Download Dependencies", 
-                  command=self.download_dependencies).grid(row=2, column=1, pady=10, sticky='w')
+                  command=self.download_dependencies).grid(row=3, column=1, pady=10, sticky='w')
         
         # Other options
         options_frame = ttk.LabelFrame(scrollable_frame, text="Other Options", padding=10)
@@ -457,6 +441,20 @@ class VideoConverterGUI:
             logger.error(f"Browse ffprobe error: {repr(e)}")
             messagebox.showerror("Browse Error", f"Failed to browse for ffprobe:\n{repr(e)}")
     
+    def browse_ffmpeg(self):
+        """Open file browser for ffmpeg executable."""
+        try:
+            file_path = filedialog.askopenfilename(
+                title="Select ffmpeg executable",
+                filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
+            )
+            if file_path:
+                self.ffmpeg_entry.delete(0, tk.END)
+                self.ffmpeg_entry.insert(0, file_path)
+        except Exception as e:
+            logger.error(f"Browse ffmpeg error: {repr(e)}")
+            messagebox.showerror("Browse Error", f"Failed to browse for ffmpeg:\n{repr(e)}")
+    
     def download_dependencies(self):
         """Download HandBrakeCLI and ffprobe to ./dependencies directory."""
         # Confirm with user
@@ -577,7 +575,8 @@ class VideoConverterGUI:
             },
             'dependencies': {
                 'handbrake': self.handbrake_entry.get().strip(),
-                'ffprobe': self.ffprobe_entry.get().strip()
+                'ffprobe': self.ffprobe_entry.get().strip(),
+                'ffmpeg': self.ffmpeg_entry.get().strip()
             },
             'remove_original_files': self.remove_original_var.get(),
             'dry_run': self.dry_run_var.get(),
@@ -676,6 +675,9 @@ class VideoConverterGUI:
             
             self.ffprobe_entry.delete(0, tk.END)
             self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
+            
+            self.ffmpeg_entry.delete(0, tk.END)
+            self.ffmpeg_entry.insert(0, dependency_config.get('ffmpeg') or 'ffmpeg')
             
             self.remove_original_var.set(self.config.get('remove_original_files', False))
             self.dry_run_var.set(self.config.get('dry_run', False))
@@ -1178,12 +1180,6 @@ class VideoConverterGUI:
     
     def scan_for_duplicates(self):
         """Scan directory for duplicate videos."""
-        if not DUPLICATE_DETECTION_AVAILABLE:
-            messagebox.showerror("Not Available", 
-                               "Duplicate detection requires imagehash and Pillow.\n"
-                               "Please install them: pip install imagehash pillow")
-            return
-        
         directory = self.dup_dir_entry.get().strip()
         if not directory or not os.path.isdir(directory):
             messagebox.showerror("Invalid Directory", "Please select a valid directory to scan")
@@ -1204,138 +1200,28 @@ class VideoConverterGUI:
         
         def scan_thread():
             try:
-                # Find video files
-                video_extensions = ('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm')
-                video_files = []
-                
-                self.progress_queue.put(('dup_status', 'Finding video files...'))
-                
-                for root, dirs, files in os.walk(directory):
-                    for file in files:
-                        if file.lower().endswith(video_extensions):
-                            video_files.append(Path(root) / file)
-                
-                if not video_files:
-                    self.progress_queue.put(('dup_error', 'No video files found in directory'))
-                    return
-                
-                self.progress_queue.put(('dup_status', f'Found {len(video_files)} videos. Extracting frames and calculating hashes...'))
-                
-                # Extract middle frames and calculate hashes
-                video_hashes = []
+                # Get dependency paths
                 dependency_config = self.config.get('dependencies', {})
-                ffprobe_path_config = dependency_config.get('ffprobe')
-                ffmpeg_path_config = dependency_config.get('ffmpeg') if 'ffmpeg' in dependency_config else ffprobe_path_config
+                ffprobe_path = convert_videos.find_dependency_path('ffprobe', dependency_config.get('ffprobe'))
+                if not ffprobe_path:
+                    ffprobe_path = 'ffprobe'
                 
-                for i, video_file in enumerate(video_files):
-                    try:
-                        # Get video duration
-                        ffprobe_path = convert_videos.find_dependency_path('ffprobe', ffprobe_path_config)
-                        if not ffprobe_path:
-                            ffprobe_path = 'ffprobe'
-                        
-                        duration_cmd = [
-                            ffprobe_path, '-v', 'error', '-show_entries', 
-                            'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
-                            str(video_file)
-                        ]
-                        result = subprocess.run(duration_cmd, capture_output=True, text=True, timeout=30)
-                        
-                        if result.returncode != 0 or not result.stdout.strip():
-                            logger.warning(f"Could not determine duration for {video_file}")
-                            continue
-                        
-                        duration = float(result.stdout.strip())
-                        midpoint = duration / 2
-                        
-                        # Extract middle frame
-                        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_frame:
-                            temp_frame_path = temp_frame.name
-                        
-                        ffmpeg_path = convert_videos.find_dependency_path('ffmpeg', ffmpeg_path_config)
-                        if not ffmpeg_path:
-                            ffmpeg_path = 'ffmpeg'
-                        
-                        extract_cmd = [
-                            ffmpeg_path, '-ss', str(midpoint), '-i', str(video_file),
-                            '-vframes', '1', '-q:v', '2', '-f', 'image2',
-                            temp_frame_path, '-y'
-                        ]
-                        subprocess.run(extract_cmd, capture_output=True, timeout=30, check=True)
-                        
-                        # Calculate perceptual hash
-                        if os.path.exists(temp_frame_path) and os.path.getsize(temp_frame_path) > 0:
-                            img = Image.open(temp_frame_path)
-                            hash_value = imagehash.phash(img)
-                            video_hashes.append((str(hash_value), video_file, temp_frame_path))
-                        else:
-                            logger.warning(f"Failed to extract frame from {video_file}")
-                            if os.path.exists(temp_frame_path):
-                                os.unlink(temp_frame_path)
-                        
-                        # Update progress
-                        if (i + 1) % 5 == 0 or i == len(video_files) - 1:
-                            self.progress_queue.put(('dup_status', 
-                                f'Processing {i + 1}/{len(video_files)} videos...'))
-                    
-                    except Exception as e:
-                        logger.error(f"Error processing {video_file}: {repr(e)}")
-                        continue
+                ffmpeg_path = convert_videos.find_dependency_path('ffmpeg', dependency_config.get('ffmpeg'))
+                if not ffmpeg_path:
+                    ffmpeg_path = 'ffmpeg'
                 
-                if not video_hashes:
-                    self.progress_queue.put(('dup_error', 'No videos could be processed'))
-                    return
+                # Progress callback
+                def progress_callback(message):
+                    self.progress_queue.put(('dup_status', message))
                 
-                self.progress_queue.put(('dup_status', f'Comparing {len(video_hashes)} video hashes...'))
-                
-                # Compare all pairs and find duplicates
-                duplicate_groups = []
-                processed_files = set()
-                
-                for i, (h1, f1, thumb1) in enumerate(video_hashes):
-                    if f1 in processed_files:
-                        continue
-                    
-                    group_files = [f1]
-                    group_thumbs = [thumb1]
-                    max_dist_in_group = 0
-                    
-                    for h2, f2, thumb2 in video_hashes[i+1:]:
-                        if f2 in processed_files:
-                            continue
-                        
-                        # Calculate hamming distance
-                        dist = self._hamming_distance(h1, h2)
-                        if dist <= max_distance:
-                            group_files.append(f2)
-                            group_thumbs.append(thumb2)
-                            max_dist_in_group = max(max_dist_in_group, dist)
-                            processed_files.add(f2)
-                    
-                    if len(group_files) > 1:
-                        # Create combined thumbnail if multiple files
-                        thumbnail_path = None
-                        try:
-                            if len(group_thumbs) >= 2:
-                                thumbnail_path = self._create_comparison_thumbnail(group_thumbs[:2])
-                        except Exception as e:
-                            logger.error(f"Failed to create comparison thumbnail: {repr(e)}")
-                        
-                        duplicate_groups.append(DuplicateResult(
-                            hash_value=h1,
-                            files=group_files,
-                            hamming_distance=max_dist_in_group,
-                            thumbnail_path=thumbnail_path
-                        ))
-                        processed_files.add(f1)
-                
-                # Clean up temp files
-                for _, _, thumb_path in video_hashes:
-                    if os.path.exists(thumb_path):
-                        try:
-                            os.unlink(thumb_path)
-                        except Exception:
-                            pass
+                # Run duplicate detection
+                duplicate_groups = duplicate_detector.scan_for_duplicates(
+                    directory=directory,
+                    max_distance=max_distance,
+                    ffmpeg_path=ffmpeg_path,
+                    ffprobe_path=ffprobe_path,
+                    progress_callback=progress_callback
+                )
                 
                 self.progress_queue.put(('dup_complete', duplicate_groups))
             
@@ -1344,41 +1230,6 @@ class VideoConverterGUI:
                 self.progress_queue.put(('dup_error', repr(e)))
         
         threading.Thread(target=scan_thread, daemon=True).start()
-    
-    def _hamming_distance(self, hash1, hash2):
-        """Calculate hamming distance between two hash strings."""
-        try:
-            return bin(int(str(hash1), 16) ^ int(str(hash2), 16)).count("1")
-        except (ValueError, TypeError):
-            return 999  # Return large distance on error
-    
-    def _create_comparison_thumbnail(self, thumbnail_paths):
-        """Create a side-by-side comparison thumbnail from two images."""
-        try:
-            img1 = Image.open(thumbnail_paths[0])
-            img2 = Image.open(thumbnail_paths[1])
-            
-            # Resize to reasonable size
-            max_height = 200
-            img1.thumbnail((400, max_height))
-            img2.thumbnail((400, max_height))
-            
-            # Create side-by-side image
-            total_width = img1.width + img2.width
-            max_height = max(img1.height, img2.height)
-            
-            combined = Image.new('RGB', (total_width, max_height))
-            combined.paste(img1, (0, 0))
-            combined.paste(img2, (img1.width, 0))
-            
-            # Save to temp file
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_combined:
-                combined.save(temp_combined, format='JPEG')
-                return temp_combined.name
-        
-        except Exception as e:
-            logger.error(f"Error creating comparison thumbnail: {repr(e)}")
-            return None
     
     def clear_duplicate_results(self):
         """Clear duplicate detection results."""
