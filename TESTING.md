@@ -1,6 +1,6 @@
 # Unit Tests
 
-This directory contains comprehensive unit tests for the `convert_videos.py` module.
+This document describes comprehensive unit tests for the `convert_videos.py` module.
 
 ## Running Tests
 

@@ -4,9 +4,8 @@ Unit tests for convert_videos.py
 """
 
 import unittest
-from unittest.mock import patch, mock_open, MagicMock, call
+from unittest.mock import patch, MagicMock
 import tempfile
-import os
 from pathlib import Path
 import yaml
 
@@ -354,16 +353,16 @@ class TestFindEligibleFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             
-            # Create test files
+            # Create test files (using smaller sizes for faster tests)
             small_file = tmpdir_path / 'small.mp4'
             large_file = tmpdir_path / 'large.mp4'
             
-            small_file.write_bytes(b'x' * (500 * 1024 ** 2))  # 500MB
-            large_file.write_bytes(b'x' * (2 * 1024 ** 3))    # 2GB
+            small_file.write_bytes(b'x' * (500 * 1024))  # 500KB
+            large_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
             
             mock_get_codec.return_value = 'h264'
             
-            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 ** 3)
+            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 * 1024)  # 1MB threshold
             
             # Only large file should be returned
             self.assertEqual(len(result), 1)
@@ -375,12 +374,12 @@ class TestFindEligibleFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             
-            # Create test files
+            # Create test files (using smaller sizes for faster tests)
             h264_file = tmpdir_path / 'h264.mp4'
             hevc_file = tmpdir_path / 'hevc.mp4'
             
-            h264_file.write_bytes(b'x' * (2 * 1024 ** 3))
-            hevc_file.write_bytes(b'x' * (2 * 1024 ** 3))
+            h264_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
+            hevc_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
             
             def codec_side_effect(path):
                 if 'h264' in str(path):
@@ -389,7 +388,7 @@ class TestFindEligibleFiles(unittest.TestCase):
             
             mock_get_codec.side_effect = codec_side_effect
             
-            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 ** 3)
+            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 * 1024)  # 1MB threshold
             
             # Only h264 file should be returned
             self.assertEqual(len(result), 1)
@@ -401,18 +400,18 @@ class TestFindEligibleFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             
-            # Create test files
+            # Create test files (using smaller sizes for faster tests)
             normal_file = tmpdir_path / 'normal.mp4'
             failed_file = tmpdir_path / 'failed.mp4.fail'
             failed_file_numbered = tmpdir_path / 'failed2.mp4.fail_1'
             
-            normal_file.write_bytes(b'x' * (2 * 1024 ** 3))
-            failed_file.write_bytes(b'x' * (2 * 1024 ** 3))
-            failed_file_numbered.write_bytes(b'x' * (2 * 1024 ** 3))
+            normal_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
+            failed_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
+            failed_file_numbered.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
             
             mock_get_codec.return_value = 'h264'
             
-            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 ** 3)
+            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 * 1024)  # 1MB threshold
             
             # Only normal file should be returned
             self.assertEqual(len(result), 1)
@@ -424,18 +423,18 @@ class TestFindEligibleFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             
-            # Create test files of different sizes
+            # Create test files of different sizes (using smaller sizes for faster tests)
             small = tmpdir_path / 'small.mp4'
             medium = tmpdir_path / 'medium.mp4'
             large = tmpdir_path / 'large.mp4'
             
-            small.write_bytes(b'x' * (1 * 1024 ** 3))    # 1GB
-            medium.write_bytes(b'x' * (2 * 1024 ** 3))   # 2GB
-            large.write_bytes(b'x' * (3 * 1024 ** 3))    # 3GB
+            small.write_bytes(b'x' * (1 * 1024 * 1024))   # 1MB
+            medium.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
+            large.write_bytes(b'x' * (3 * 1024 * 1024))   # 3MB
             
             mock_get_codec.return_value = 'h264'
             
-            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 ** 3)
+            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 * 1024)  # 1MB threshold
             
             # Should be sorted largest first
             self.assertEqual(len(result), 3)
