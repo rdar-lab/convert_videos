@@ -13,8 +13,20 @@ import logging
 import os
 import subprocess
 import re
+import tempfile
+from collections import defaultdict
+import itertools
+from io import BytesIO
+import base64
 
 import convert_videos
+
+try:
+    import imagehash
+    from PIL import Image, ImageTk
+    DUPLICATE_DETECTION_AVAILABLE = True
+except ImportError:
+    DUPLICATE_DETECTION_AVAILABLE = False
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +48,15 @@ class ConversionResult:
         self.space_saved_percent = (self.space_saved / original_size * 100) if original_size > 0 else 0
 
 
+class DuplicateResult:
+    """Represents a group of duplicate videos."""
+    def __init__(self, hash_value, files, hamming_distance, thumbnail_path=None):
+        self.hash_value = hash_value
+        self.files = files  # List of file paths
+        self.hamming_distance = hamming_distance
+        self.thumbnail_path = thumbnail_path  # Path to comparison thumbnail
+
+
 class VideoConverterGUI:
     """Main GUI application for video converter."""
     
@@ -54,6 +75,10 @@ class VideoConverterGUI:
         self.conversion_results = []
         self.is_running = False
         self.stop_requested = False
+        
+        # Duplicate detection state
+        self.duplicate_results = []
+        self.duplicate_scan_running = False
         
         # Thread communication
         self.progress_queue = queue.Queue()
@@ -89,6 +114,14 @@ class VideoConverterGUI:
         self.results_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.results_tab, text="Results")
         self.create_results_tab()
+        
+        # Detect Duplicates Tab
+        if DUPLICATE_DETECTION_AVAILABLE:
+            self.duplicates_tab = ttk.Frame(self.notebook)
+            self.notebook.add(self.duplicates_tab, text="Detect Duplicates")
+            self.create_duplicates_tab()
+        else:
+            logger.warning("Duplicate detection not available - imagehash and/or PIL not installed")
         
     def create_config_tab(self):
         """Create the configuration editor tab."""
@@ -296,7 +329,95 @@ class VideoConverterGUI:
         # Clear button
         ttk.Button(self.results_tab, text="Clear Results", 
                   command=self.clear_results).pack(pady=5)
+    
+    def create_duplicates_tab(self):
+        """Create the duplicate detection tab."""
+        # Directory selection
+        dir_frame = ttk.LabelFrame(self.duplicates_tab, text="Scan Settings", padding=10)
+        dir_frame.pack(fill='x', padx=10, pady=5)
         
+        ttk.Label(dir_frame, text="Directory to Scan:").grid(row=0, column=0, sticky='w', pady=5)
+        self.dup_dir_entry = ttk.Entry(dir_frame, width=50)
+        self.dup_dir_entry.grid(row=0, column=1, padx=5, pady=5)
+        default_dir = self.config.get('directory') or os.getcwd()
+        self.dup_dir_entry.insert(0, default_dir)
+        ttk.Button(dir_frame, text="Browse...", command=self.browse_duplicate_directory).grid(row=0, column=2, pady=5)
+        
+        ttk.Label(dir_frame, text="Max Hamming Distance:").grid(row=1, column=0, sticky='w', pady=5)
+        self.hamming_distance_entry = ttk.Entry(dir_frame, width=10)
+        self.hamming_distance_entry.grid(row=1, column=1, sticky='w', padx=5, pady=5)
+        self.hamming_distance_entry.insert(0, "5")
+        ttk.Label(dir_frame, text="(Lower = more similar, recommended: 5)").grid(row=1, column=2, sticky='w')
+        
+        # Control buttons
+        button_frame = ttk.Frame(self.duplicates_tab)
+        button_frame.pack(fill='x', padx=10, pady=5)
+        
+        self.scan_duplicates_button = ttk.Button(button_frame, text="Scan for Duplicates", 
+                                                  command=self.scan_for_duplicates)
+        self.scan_duplicates_button.pack(side='left', padx=5)
+        
+        self.clear_duplicates_button = ttk.Button(button_frame, text="Clear Results", 
+                                                   command=self.clear_duplicate_results)
+        self.clear_duplicates_button.pack(side='left', padx=5)
+        
+        # Status label
+        self.dup_status_label = ttk.Label(self.duplicates_tab, text="Ready to scan", foreground="blue")
+        self.dup_status_label.pack(fill='x', padx=10, pady=5)
+        
+        # Progress bar
+        self.dup_progress_bar = ttk.Progressbar(self.duplicates_tab, mode='indeterminate')
+        self.dup_progress_bar.pack(fill='x', padx=10, pady=5)
+        
+        # Results tree
+        tree_frame = ttk.Frame(self.duplicates_tab)
+        tree_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        
+        # Scrollbars
+        tree_scroll_y = ttk.Scrollbar(tree_frame, orient='vertical')
+        tree_scroll_x = ttk.Scrollbar(tree_frame, orient='horizontal')
+        
+        # Create treeview
+        columns = ('Distance', 'Files', 'Thumbnail')
+        self.duplicates_tree = ttk.Treeview(tree_frame, columns=columns, show='tree headings',
+                                           yscrollcommand=tree_scroll_y.set,
+                                           xscrollcommand=tree_scroll_x.set)
+        
+        tree_scroll_y.config(command=self.duplicates_tree.yview)
+        tree_scroll_x.config(command=self.duplicates_tree.xview)
+        
+        # Configure columns
+        self.duplicates_tree.heading('#0', text='Group')
+        self.duplicates_tree.heading('Distance', text='Hamming Distance')
+        self.duplicates_tree.heading('Files', text='File Count')
+        self.duplicates_tree.heading('Thumbnail', text='Has Thumbnail')
+        
+        self.duplicates_tree.column('#0', width=100, minwidth=80)
+        self.duplicates_tree.column('Distance', width=120, minwidth=100)
+        self.duplicates_tree.column('Files', width=100, minwidth=80)
+        self.duplicates_tree.column('Thumbnail', width=120, minwidth=100)
+        
+        # Pack
+        self.duplicates_tree.pack(side='left', fill='both', expand=True)
+        tree_scroll_y.pack(side='right', fill='y')
+        tree_scroll_x.pack(side='bottom', fill='x')
+        
+        # Summary label
+        self.dup_summary_label = ttk.Label(self.duplicates_tab, text="No duplicates found yet")
+        self.dup_summary_label.pack(fill='x', padx=10, pady=5)
+        
+    
+    def browse_duplicate_directory(self):
+        """Open directory browser for duplicate detection."""
+        try:
+            directory = filedialog.askdirectory(initialdir=self.dup_dir_entry.get())
+            if directory:
+                self.dup_dir_entry.delete(0, tk.END)
+                self.dup_dir_entry.insert(0, directory)
+        except Exception as e:
+            logger.error(f"Browse directory error: {repr(e)}")
+            messagebox.showerror("Browse Error", f"Failed to browse directory:\n{repr(e)}")
+    
     def browse_directory(self):
         """Open directory browser."""
         try:
@@ -963,6 +1084,51 @@ class VideoConverterGUI:
                 elif msg_type == 'download_error':
                     self.validation_label.config(text="❌ Download failed", foreground="red")
                     messagebox.showerror("Download Error", f"Failed to download dependencies:\n\n{data}")
+                
+                elif msg_type == 'dup_status':
+                    self.dup_status_label.config(text=data, foreground="blue")
+                
+                elif msg_type == 'dup_complete':
+                    duplicate_groups = data
+                    self.duplicate_results = duplicate_groups
+                    self.duplicates_tree.delete(*self.duplicates_tree.get_children())
+                    
+                    for i, group in enumerate(duplicate_groups):
+                        group_id = self.duplicates_tree.insert('', 'end', 
+                            text=f'Group {i+1}',
+                            values=(group.hamming_distance, len(group.files), 
+                                   'Yes' if group.thumbnail_path else 'No'))
+                        
+                        # Add files as children
+                        for file_path in group.files:
+                            self.duplicates_tree.insert(group_id, 'end', 
+                                text=str(Path(file_path).name),
+                                values=('', '', ''))
+                    
+                    self.dup_progress_bar.stop()
+                    self.dup_status_label.config(
+                        text=f"✅ Found {len(duplicate_groups)} duplicate groups", 
+                        foreground="green"
+                    )
+                    self.dup_summary_label.config(
+                        text=f"Total Groups: {len(duplicate_groups)} | "
+                             f"Total Duplicate Files: {sum(len(g.files) for g in duplicate_groups)}"
+                    )
+                    self.duplicate_scan_running = False
+                    self.scan_duplicates_button.config(state='normal')
+                    
+                    if duplicate_groups:
+                        messagebox.showinfo("Scan Complete", 
+                            f"Found {len(duplicate_groups)} groups of duplicate videos")
+                    else:
+                        messagebox.showinfo("Scan Complete", "No duplicates found")
+                
+                elif msg_type == 'dup_error':
+                    self.dup_progress_bar.stop()
+                    self.dup_status_label.config(text=f"❌ Error: {data}", foreground="red")
+                    self.duplicate_scan_running = False
+                    self.scan_duplicates_button.config(state='normal')
+                    messagebox.showerror("Scan Error", f"Failed to scan for duplicates:\n\n{data}")
                     
         except queue.Empty:
             pass
@@ -1008,6 +1174,224 @@ class VideoConverterGUI:
                 self.summary_label.config(text="No conversions completed yet")
         except Exception as e:
             logger.error(f"Clear results error: {repr(e)}")
+            messagebox.showerror("Clear Error", f"Failed to clear results:\n{repr(e)}")
+    
+    def scan_for_duplicates(self):
+        """Scan directory for duplicate videos."""
+        if not DUPLICATE_DETECTION_AVAILABLE:
+            messagebox.showerror("Not Available", 
+                               "Duplicate detection requires imagehash and Pillow.\n"
+                               "Please install them: pip install imagehash pillow")
+            return
+        
+        directory = self.dup_dir_entry.get().strip()
+        if not directory or not os.path.isdir(directory):
+            messagebox.showerror("Invalid Directory", "Please select a valid directory to scan")
+            return
+        
+        try:
+            max_distance = int(self.hamming_distance_entry.get().strip())
+            if max_distance < 0:
+                raise ValueError("Distance must be non-negative")
+        except ValueError as e:
+            messagebox.showerror("Invalid Distance", f"Please enter a valid hamming distance: {e}")
+            return
+        
+        self.duplicate_scan_running = True
+        self.scan_duplicates_button.config(state='disabled')
+        self.dup_status_label.config(text="Scanning for videos...", foreground="blue")
+        self.dup_progress_bar.start()
+        
+        def scan_thread():
+            try:
+                # Find video files
+                video_extensions = ('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm')
+                video_files = []
+                
+                self.progress_queue.put(('dup_status', 'Finding video files...'))
+                
+                for root, dirs, files in os.walk(directory):
+                    for file in files:
+                        if file.lower().endswith(video_extensions):
+                            video_files.append(Path(root) / file)
+                
+                if not video_files:
+                    self.progress_queue.put(('dup_error', 'No video files found in directory'))
+                    return
+                
+                self.progress_queue.put(('dup_status', f'Found {len(video_files)} videos. Extracting frames and calculating hashes...'))
+                
+                # Extract middle frames and calculate hashes
+                video_hashes = []
+                dependency_config = self.config.get('dependencies', {})
+                ffmpeg_path = convert_videos.find_dependency_path('ffmpeg', dependency_config.get('ffprobe'))
+                if not ffmpeg_path:
+                    ffmpeg_path = 'ffmpeg'
+                
+                for i, video_file in enumerate(video_files):
+                    try:
+                        # Get video duration
+                        ffprobe_path = convert_videos.find_dependency_path('ffprobe', dependency_config.get('ffprobe'))
+                        if not ffprobe_path:
+                            ffprobe_path = 'ffprobe'
+                        
+                        duration_cmd = [
+                            ffprobe_path, '-v', 'error', '-show_entries', 
+                            'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
+                            str(video_file)
+                        ]
+                        result = subprocess.run(duration_cmd, capture_output=True, text=True, timeout=30)
+                        
+                        if result.returncode != 0 or not result.stdout.strip():
+                            logger.warning(f"Could not determine duration for {video_file}")
+                            continue
+                        
+                        duration = float(result.stdout.strip())
+                        midpoint = duration / 2
+                        
+                        # Extract middle frame
+                        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_frame:
+                            temp_frame_path = temp_frame.name
+                        
+                        extract_cmd = [
+                            ffmpeg_path, '-ss', str(midpoint), '-i', str(video_file),
+                            '-vframes', '1', '-q:v', '2', '-f', 'image2',
+                            temp_frame_path, '-y'
+                        ]
+                        subprocess.run(extract_cmd, capture_output=True, timeout=30, check=True)
+                        
+                        # Calculate perceptual hash
+                        if os.path.exists(temp_frame_path) and os.path.getsize(temp_frame_path) > 0:
+                            img = Image.open(temp_frame_path)
+                            hash_value = imagehash.phash(img)
+                            video_hashes.append((str(hash_value), video_file, temp_frame_path))
+                        else:
+                            logger.warning(f"Failed to extract frame from {video_file}")
+                            if os.path.exists(temp_frame_path):
+                                os.unlink(temp_frame_path)
+                        
+                        # Update progress
+                        if (i + 1) % 5 == 0 or i == len(video_files) - 1:
+                            self.progress_queue.put(('dup_status', 
+                                f'Processing {i + 1}/{len(video_files)} videos...'))
+                    
+                    except Exception as e:
+                        logger.error(f"Error processing {video_file}: {repr(e)}")
+                        continue
+                
+                if not video_hashes:
+                    self.progress_queue.put(('dup_error', 'No videos could be processed'))
+                    return
+                
+                self.progress_queue.put(('dup_status', f'Comparing {len(video_hashes)} video hashes...'))
+                
+                # Compare all pairs and find duplicates
+                duplicate_groups = []
+                processed_files = set()
+                
+                for i, (h1, f1, thumb1) in enumerate(video_hashes):
+                    if f1 in processed_files:
+                        continue
+                    
+                    group_files = [f1]
+                    group_thumbs = [thumb1]
+                    
+                    for h2, f2, thumb2 in video_hashes[i+1:]:
+                        if f2 in processed_files:
+                            continue
+                        
+                        # Calculate hamming distance
+                        dist = self._hamming_distance(h1, h2)
+                        if dist <= max_distance:
+                            group_files.append(f2)
+                            group_thumbs.append(thumb2)
+                            processed_files.add(f2)
+                    
+                    if len(group_files) > 1:
+                        # Create combined thumbnail if multiple files
+                        thumbnail_path = None
+                        try:
+                            if len(group_thumbs) >= 2:
+                                thumbnail_path = self._create_comparison_thumbnail(group_thumbs[:2])
+                        except Exception as e:
+                            logger.error(f"Failed to create comparison thumbnail: {repr(e)}")
+                        
+                        duplicate_groups.append(DuplicateResult(
+                            hash_value=h1,
+                            files=group_files,
+                            hamming_distance=0,  # Distance within group varies
+                            thumbnail_path=thumbnail_path
+                        ))
+                        processed_files.add(f1)
+                
+                # Clean up temp files
+                for _, _, thumb_path in video_hashes:
+                    if os.path.exists(thumb_path):
+                        try:
+                            os.unlink(thumb_path)
+                        except Exception:
+                            pass
+                
+                self.progress_queue.put(('dup_complete', duplicate_groups))
+            
+            except Exception as e:
+                logger.error(f"Duplicate scan error: {repr(e)}")
+                self.progress_queue.put(('dup_error', repr(e)))
+        
+        threading.Thread(target=scan_thread, daemon=True).start()
+    
+    def _hamming_distance(self, hash1, hash2):
+        """Calculate hamming distance between two hash strings."""
+        try:
+            return bin(int(str(hash1), 16) ^ int(str(hash2), 16)).count("1")
+        except (ValueError, TypeError):
+            return 999  # Return large distance on error
+    
+    def _create_comparison_thumbnail(self, thumbnail_paths):
+        """Create a side-by-side comparison thumbnail from two images."""
+        try:
+            img1 = Image.open(thumbnail_paths[0])
+            img2 = Image.open(thumbnail_paths[1])
+            
+            # Resize to reasonable size
+            max_height = 200
+            img1.thumbnail((400, max_height))
+            img2.thumbnail((400, max_height))
+            
+            # Create side-by-side image
+            total_width = img1.width + img2.width
+            max_height = max(img1.height, img2.height)
+            
+            combined = Image.new('RGB', (total_width, max_height))
+            combined.paste(img1, (0, 0))
+            combined.paste(img2, (img1.width, 0))
+            
+            # Save to temp file
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_combined:
+                combined.save(temp_combined, format='JPEG')
+                return temp_combined.name
+        
+        except Exception as e:
+            logger.error(f"Error creating comparison thumbnail: {repr(e)}")
+            return None
+    
+    def clear_duplicate_results(self):
+        """Clear duplicate detection results."""
+        try:
+            if messagebox.askyesno("Clear Results", "Are you sure you want to clear duplicate results?"):
+                # Clean up thumbnail files
+                for result in self.duplicate_results:
+                    if result.thumbnail_path and os.path.exists(result.thumbnail_path):
+                        try:
+                            os.unlink(result.thumbnail_path)
+                        except Exception:
+                            pass
+                
+                self.duplicate_results.clear()
+                self.duplicates_tree.delete(*self.duplicates_tree.get_children())
+                self.dup_summary_label.config(text="No duplicates found yet")
+        except Exception as e:
+            logger.error(f"Clear duplicate results error: {repr(e)}")
             messagebox.showerror("Clear Error", f"Failed to clear results:\n{repr(e)}")
             
     @staticmethod
