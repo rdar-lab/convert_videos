@@ -8,8 +8,6 @@ import subprocess
 import tempfile
 import logging
 from pathlib import Path
-from collections import defaultdict
-import itertools
 
 import imagehash
 from PIL import Image

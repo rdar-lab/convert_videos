@@ -13,7 +13,7 @@ import logging
 import os
 import subprocess
 import re
-import tempfile
+import platform
 
 import convert_videos
 import duplicate_detector
@@ -1277,6 +1277,9 @@ class VideoConverterGUI:
         """Clear duplicate detection results."""
         try:
             if messagebox.askyesno("Clear Results", "Are you sure you want to clear duplicate results?"):
+                # Track temp directories to clean up
+                temp_dirs = set()
+                
                 # Clean up thumbnail files
                 for result in self.duplicate_results:
                     # Clean up comparison thumbnail
@@ -1284,6 +1287,7 @@ class VideoConverterGUI:
                         try:
                             os.unlink(result.comparison_thumbnail)
                         except Exception:
+                            # Best-effort cleanup; file may already be deleted
                             pass
                     
                     # Clean up individual file thumbnails
@@ -1291,21 +1295,23 @@ class VideoConverterGUI:
                         if thumb_path and os.path.exists(thumb_path):
                             try:
                                 os.unlink(thumb_path)
+                                # Track the parent directory for cleanup
+                                temp_dirs.add(Path(thumb_path).parent)
                             except Exception:
+                                # Best-effort cleanup; file may already be deleted
                                 pass
-                    
-                    # Try to remove the temp directory if empty
-                    if result.file_thumbnails:
-                        # Get directory from any thumbnail path
-                        for thumb_path in result.file_thumbnails.values():
-                            if thumb_path:
-                                temp_dir = Path(thumb_path).parent
-                                try:
-                                    if temp_dir.exists() and temp_dir.name.startswith('video_dup_'):
-                                        temp_dir.rmdir()
-                                except Exception:
-                                    pass
-                                break
+                
+                # Try to remove temp directories after all files are deleted
+                for temp_dir in temp_dirs:
+                    try:
+                        if temp_dir.exists() and temp_dir.name.startswith('video_dup_'):
+                            temp_dir.rmdir()
+                    except Exception:
+                        # Directory may not be empty or may be in use
+                        pass
+                
+                # Clear the thumbnail image cache
+                self.thumbnail_images.clear()
                 
                 self.duplicate_results.clear()
                 self.duplicates_tree.delete(*self.duplicates_tree.get_children())
@@ -1380,6 +1386,7 @@ class VideoConverterGUI:
             try:
                 self.thumbnail_tooltip.destroy()
             except Exception:
+                # Tooltip may have already been destroyed
                 pass
             self.thumbnail_tooltip = None
     
@@ -1399,14 +1406,24 @@ class VideoConverterGUI:
             # Get the file name from the item
             file_name = self.duplicates_tree.item(item, 'text')
             
-            # Find the full file path from duplicate results
+            # Find the full file path from the duplicate group that this item belongs to
             file_path = None
-            for group in self.duplicate_results:
-                for fpath in group.files:
-                    if Path(fpath).name == file_name:
-                        file_path = fpath
-                        break
-                if file_path:
+            
+            # Determine which duplicate group this parent item represents
+            group_items = self.duplicates_tree.get_children('')
+            try:
+                group_index = group_items.index(parent)
+            except ValueError:
+                return
+            
+            # Ensure the index is within the range of available duplicate results
+            if group_index < 0 or group_index >= len(self.duplicate_results):
+                return
+            
+            group = self.duplicate_results[group_index]
+            for fpath in group.files:
+                if Path(fpath).name == file_name:
+                    file_path = fpath
                     break
             
             if not file_path:
@@ -1437,11 +1454,13 @@ class VideoConverterGUI:
         except Exception as e:
             logger.error(f"Error showing context menu: {repr(e)}")
         finally:
-            # Clean up menu
-            try:
-                context_menu.grab_release()
-            except Exception:
-                pass
+            # Clean up menu if it was created
+            if "context_menu" in locals():
+                try:
+                    context_menu.grab_release()
+                except Exception:
+                    # Best-effort cleanup; grab may have already been released
+                    pass
     
     def delete_duplicate_file(self, tree_item, file_path):
         """Delete a duplicate file after confirmation."""
@@ -1521,9 +1540,6 @@ class VideoConverterGUI:
                 messagebox.showerror("File Not Found", f"File does not exist:\n{file_path}")
                 return
             
-            import platform
-            import subprocess
-            
             system = platform.system()
             if system == 'Windows':
                 # Windows: use os.startfile
@@ -1548,9 +1564,6 @@ class VideoConverterGUI:
             if not os.path.exists(file_path):
                 messagebox.showerror("File Not Found", f"File does not exist:\n{file_path}")
                 return
-            
-            import platform
-            import subprocess
             
             system = platform.system()
             if system == 'Windows':

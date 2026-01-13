@@ -4,9 +4,6 @@ Unit tests for convert_videos_gui.py
 """
 
 import unittest
-import tempfile
-import os
-from pathlib import Path
 
 # Import the GUI module (but don't run GUI components)
 try:

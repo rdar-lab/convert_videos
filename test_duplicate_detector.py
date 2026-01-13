@@ -6,14 +6,12 @@ Unit tests for duplicate_detector.py
 import unittest
 import tempfile
 import os
-from pathlib import Path
 
 from duplicate_detector import (
     DuplicateResult, hamming_distance, create_comparison_thumbnail,
     MAX_HAMMING_DISTANCE_ERROR
 )
 from PIL import Image
-import imagehash
 
 
 class TestDuplicateResult(unittest.TestCase):
@@ -99,8 +97,7 @@ class TestComparisonThumbnail(unittest.TestCase):
             if result_path:
                 self.assertTrue(os.path.exists(result_path))
                 # Clean up
-                if os.path.exists(result_path):
-                    os.unlink(result_path)
+                os.unlink(result_path)
     
     def test_create_comparison_thumbnail_with_invalid_files(self):
         """Test creating comparison thumbnail with invalid files."""
