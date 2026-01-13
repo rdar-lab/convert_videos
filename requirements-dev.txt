@@ -1,0 +1,9 @@
+# Development and testing dependencies
+# Pinned to exact versions for security and reproducibility
+
+# Testing framework
+pytest==8.0.0
+pytest-cov==4.1.0
+
+# Include production dependencies
+-r requirements.txt
