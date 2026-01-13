@@ -11,11 +11,6 @@ import yaml
 from pathlib import Path
 import logging
 import os
-import platform
-import urllib.request
-import tarfile
-import zipfile
-import shutil
 
 import convert_videos
 
@@ -352,134 +347,19 @@ class VideoConverterGUI:
         
         # Run download in background thread
         def download_thread():
+            def progress_callback(message):
+                """Callback to report progress to GUI."""
+                self.progress_queue.put(('download_status', message))
+            
             try:
-                system = platform.system()
-                machine = platform.machine().lower()
+                # Call centralized download function
+                handbrake_path, ffprobe_path = convert_videos.download_dependencies(progress_callback)
                 
-                # Create dependencies directory
-                deps_dir = Path(os.getcwd()) / "dependencies"
-                deps_dir.mkdir(exist_ok=True)
-                
-                self.progress_queue.put(('download_status', "Detecting platform..."))
-                
-                # Determine URLs based on platform
-                if system == "Windows":
-                    handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-win-x86_64.zip"
-                    ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-                    handbrake_exe = "HandBrakeCLI.exe"
-                    ffprobe_exe = "ffprobe.exe"
-                elif system == "Darwin":  # macOS
-                    if "arm" in machine or "aarch64" in machine:
-                        handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-arm64.dmg"
-                    else:
-                        handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.dmg"
-                    ffmpeg_url = "https://evermeet.cx/ffmpeg/ffmpeg-6.1.zip"
-                    handbrake_exe = "HandBrakeCLI"
-                    ffprobe_exe = "ffprobe"
-                elif system == "Linux":
-                    if "arm" in machine or "aarch64" in machine:
-                        handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-aarch64.flatpak"
-                        ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz"
-                    else:
-                        handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.flatpak"
-                        ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-                    handbrake_exe = "HandBrakeCLI"
-                    ffprobe_exe = "ffprobe"
+                if handbrake_path and ffprobe_path:
+                    self.progress_queue.put(('download_complete', (handbrake_path, ffprobe_path)))
                 else:
-                    raise Exception(f"Unsupported platform: {system}")
-                
-                # Download HandBrakeCLI
-                self.progress_queue.put(('download_status', f"Downloading HandBrakeCLI for {system}..."))
-                handbrake_archive = deps_dir / f"handbrake.{handbrake_url.split('.')[-1]}"
-                
-                try:
-                    urllib.request.urlretrieve(handbrake_url, handbrake_archive)
-                except Exception as e:
-                    raise Exception(f"Failed to download HandBrakeCLI: {repr(e)}")
-                
-                # Extract HandBrakeCLI
-                self.progress_queue.put(('download_status', "Extracting HandBrakeCLI..."))
-                try:
-                    if handbrake_archive.suffix == ".zip":
-                        with zipfile.ZipFile(handbrake_archive, 'r') as zip_ref:
-                            zip_ref.extractall(deps_dir / "handbrake_temp")
-                        # Find HandBrakeCLI executable in extracted files
-                        for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
-                            if handbrake_exe in files:
-                                shutil.copy2(Path(root) / handbrake_exe, deps_dir / handbrake_exe)
-                                break
-                        shutil.rmtree(deps_dir / "handbrake_temp")
-                    elif handbrake_archive.suffix in [".tar", ".xz", ".gz"]:
-                        with tarfile.open(handbrake_archive, 'r:*') as tar_ref:
-                            tar_ref.extractall(deps_dir / "handbrake_temp")
-                        # Find HandBrakeCLI executable
-                        for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
-                            if handbrake_exe in files:
-                                shutil.copy2(Path(root) / handbrake_exe, deps_dir / handbrake_exe)
-                                break
-                        shutil.rmtree(deps_dir / "handbrake_temp")
-                    else:
-                        # For formats like .dmg or .flatpak, just inform user
-                        raise Exception(f"HandBrakeCLI format {handbrake_archive.suffix} requires manual installation on {system}")
-                except Exception as e:
-                    logger.error(f"HandBrakeCLI extraction error: {repr(e)}")
-                    self.progress_queue.put(('download_error', f"HandBrakeCLI extraction failed: {repr(e)}"))
-                    return
-                finally:
-                    if handbrake_archive.exists():
-                        handbrake_archive.unlink()
-                
-                # Download ffmpeg (includes ffprobe)
-                self.progress_queue.put(('download_status', f"Downloading ffmpeg for {system}..."))
-                ffmpeg_archive = deps_dir / f"ffmpeg.{ffmpeg_url.split('.')[-1]}"
-                
-                try:
-                    urllib.request.urlretrieve(ffmpeg_url, ffmpeg_archive)
-                except Exception as e:
-                    raise Exception(f"Failed to download ffmpeg: {repr(e)}")
-                
-                # Extract ffmpeg/ffprobe
-                self.progress_queue.put(('download_status', "Extracting ffmpeg..."))
-                try:
-                    if ffmpeg_archive.suffix == ".zip":
-                        with zipfile.ZipFile(ffmpeg_archive, 'r') as zip_ref:
-                            zip_ref.extractall(deps_dir / "ffmpeg_temp")
-                        # Find ffprobe executable
-                        for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
-                            if ffprobe_exe in files:
-                                shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
-                                break
-                        shutil.rmtree(deps_dir / "ffmpeg_temp")
-                    elif ffmpeg_archive.suffix in [".tar", ".xz", ".gz"]:
-                        with tarfile.open(ffmpeg_archive, 'r:*') as tar_ref:
-                            tar_ref.extractall(deps_dir / "ffmpeg_temp")
-                        # Find ffprobe executable
-                        for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
-                            if ffprobe_exe in files:
-                                shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
-                                break
-                        shutil.rmtree(deps_dir / "ffmpeg_temp")
-                    else:
-                        raise Exception(f"ffmpeg format {ffmpeg_archive.suffix} not supported")
-                except Exception as e:
-                    logger.error(f"ffmpeg extraction error: {repr(e)}")
-                    self.progress_queue.put(('download_error', f"ffmpeg extraction failed: {repr(e)}"))
-                    return
-                finally:
-                    if ffmpeg_archive.exists():
-                        ffmpeg_archive.unlink()
-                
-                # Make executables executable on Unix-like systems
-                if system in ["Linux", "Darwin"]:
-                    handbrake_path = deps_dir / handbrake_exe
-                    ffprobe_path = deps_dir / ffprobe_exe
-                    if handbrake_path.exists():
-                        os.chmod(handbrake_path, 0o755)
-                    if ffprobe_path.exists():
-                        os.chmod(ffprobe_path, 0o755)
-                
-                self.progress_queue.put(('download_complete', (str(deps_dir / handbrake_exe), str(deps_dir / ffprobe_exe))))
-                
+                    self.progress_queue.put(('download_error', "Download failed. Check logs for details."))
+                    
             except Exception as e:
                 logger.error(f"Download dependencies error: {repr(e)}")
                 self.progress_queue.put(('download_error', repr(e)))

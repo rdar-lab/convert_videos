@@ -19,6 +19,11 @@ from pathlib import Path
 import time
 import yaml
 import re
+import platform
+import urllib.request
+import tarfile
+import zipfile
+import shutil
 
 
 # Configure logging
@@ -591,6 +596,201 @@ def validate_and_finalize(input_path, temp_output, final_output, preserve_origin
         return False
 
 
+def download_dependencies(progress_callback=None):
+    """
+    Download HandBrakeCLI and ffprobe to ./dependencies directory.
+    
+    Args:
+        progress_callback: Optional callback function to report progress.
+                          Called with status messages as strings.
+    
+    Returns:
+        tuple: (handbrake_path, ffprobe_path) as strings, or (None, None) on failure
+    """
+    try:
+        system = platform.system()
+        machine = platform.machine().lower()
+        
+        # Create dependencies directory
+        deps_dir = Path(os.getcwd()) / "dependencies"
+        deps_dir.mkdir(exist_ok=True)
+        
+        if progress_callback:
+            progress_callback("Detecting platform...")
+        logger.info("Detecting platform...")
+        
+        # Determine executable names based on platform
+        if system == "Windows":
+            handbrake_exe = "HandBrakeCLI.exe"
+            ffprobe_exe = "ffprobe.exe"
+        else:
+            handbrake_exe = "HandBrakeCLI"
+            ffprobe_exe = "ffprobe"
+        
+        # Check if dependencies already exist
+        handbrake_path = deps_dir / handbrake_exe
+        ffprobe_path = deps_dir / ffprobe_exe
+        
+        if handbrake_path.exists() and ffprobe_path.exists():
+            # Validate existing dependencies
+            handbrake_valid, _ = check_single_dependency(str(handbrake_path))
+            ffprobe_valid, _ = check_single_dependency(str(ffprobe_path))
+            
+            if handbrake_valid and ffprobe_valid:
+                msg = "Dependencies already exist and are valid. Skipping download."
+                if progress_callback:
+                    progress_callback(msg)
+                logger.info(msg)
+                return (str(handbrake_path), str(ffprobe_path))
+            else:
+                msg = "Existing dependencies are invalid. Re-downloading..."
+                if progress_callback:
+                    progress_callback(msg)
+                logger.info(msg)
+        
+        # Determine URLs based on platform
+        if system == "Windows":
+            handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-win-x86_64.zip"
+            ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+        elif system == "Darwin":  # macOS
+            if "arm" in machine or "aarch64" in machine:
+                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-arm64.dmg"
+            else:
+                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.dmg"
+            ffmpeg_url = "https://evermeet.cx/ffmpeg/ffmpeg-6.1.zip"
+        elif system == "Linux":
+            if "arm" in machine or "aarch64" in machine:
+                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-aarch64.flatpak"
+                ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz"
+            else:
+                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.flatpak"
+                ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+        else:
+            raise Exception(f"Unsupported platform: {system}")
+        
+        # Download HandBrakeCLI
+        msg = f"Downloading HandBrakeCLI for {system}..."
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        handbrake_archive = deps_dir / f"handbrake.{handbrake_url.split('.')[-1]}"
+        
+        try:
+            urllib.request.urlretrieve(handbrake_url, handbrake_archive)
+        except Exception as e:
+            raise Exception(f"Failed to download HandBrakeCLI: {repr(e)}")
+        
+        # Extract HandBrakeCLI
+        msg = "Extracting HandBrakeCLI..."
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        try:
+            if handbrake_archive.suffix == ".zip":
+                with zipfile.ZipFile(handbrake_archive, 'r') as zip_ref:
+                    zip_ref.extractall(deps_dir / "handbrake_temp")
+                # Find HandBrakeCLI executable in extracted files
+                for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
+                    if handbrake_exe in files:
+                        shutil.copy2(Path(root) / handbrake_exe, deps_dir / handbrake_exe)
+                        break
+                shutil.rmtree(deps_dir / "handbrake_temp")
+            elif handbrake_archive.suffix in [".tar", ".xz", ".gz"]:
+                with tarfile.open(handbrake_archive, 'r:*') as tar_ref:
+                    tar_ref.extractall(deps_dir / "handbrake_temp")
+                # Find HandBrakeCLI executable
+                for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
+                    if handbrake_exe in files:
+                        shutil.copy2(Path(root) / handbrake_exe, deps_dir / handbrake_exe)
+                        break
+                shutil.rmtree(deps_dir / "handbrake_temp")
+            else:
+                # For formats like .dmg or .flatpak, just inform user
+                raise Exception(f"HandBrakeCLI format {handbrake_archive.suffix} requires manual installation on {system}")
+        except Exception as e:
+            logger.error(f"HandBrakeCLI extraction error: {repr(e)}")
+            msg = f"HandBrakeCLI extraction failed: {repr(e)}"
+            if progress_callback:
+                progress_callback(msg)
+            return (None, None)
+        finally:
+            if handbrake_archive.exists():
+                handbrake_archive.unlink()
+        
+        # Download ffmpeg (includes ffprobe)
+        msg = f"Downloading ffmpeg for {system}..."
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        ffmpeg_archive = deps_dir / f"ffmpeg.{ffmpeg_url.split('.')[-1]}"
+        
+        try:
+            urllib.request.urlretrieve(ffmpeg_url, ffmpeg_archive)
+        except Exception as e:
+            raise Exception(f"Failed to download ffmpeg: {repr(e)}")
+        
+        # Extract ffmpeg/ffprobe
+        msg = "Extracting ffmpeg..."
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        try:
+            if ffmpeg_archive.suffix == ".zip":
+                with zipfile.ZipFile(ffmpeg_archive, 'r') as zip_ref:
+                    zip_ref.extractall(deps_dir / "ffmpeg_temp")
+                # Find ffprobe executable
+                for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
+                    if ffprobe_exe in files:
+                        shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
+                        break
+                shutil.rmtree(deps_dir / "ffmpeg_temp")
+            elif ffmpeg_archive.suffix in [".tar", ".xz", ".gz"]:
+                with tarfile.open(ffmpeg_archive, 'r:*') as tar_ref:
+                    tar_ref.extractall(deps_dir / "ffmpeg_temp")
+                # Find ffprobe executable
+                for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
+                    if ffprobe_exe in files:
+                        shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
+                        break
+                shutil.rmtree(deps_dir / "ffmpeg_temp")
+            else:
+                raise Exception(f"ffmpeg format {ffmpeg_archive.suffix} not supported")
+        except Exception as e:
+            logger.error(f"ffmpeg extraction error: {repr(e)}")
+            msg = f"ffmpeg extraction failed: {repr(e)}"
+            if progress_callback:
+                progress_callback(msg)
+            return (None, None)
+        finally:
+            if ffmpeg_archive.exists():
+                ffmpeg_archive.unlink()
+        
+        # Make executables executable on Unix-like systems
+        if system in ["Linux", "Darwin"]:
+            if handbrake_path.exists():
+                os.chmod(handbrake_path, 0o755)
+            if ffprobe_path.exists():
+                os.chmod(ffprobe_path, 0o755)
+        
+        msg = f"Dependencies downloaded successfully to {deps_dir}"
+        if progress_callback:
+            progress_callback(msg)
+        logger.info(msg)
+        
+        return (str(handbrake_path), str(ffprobe_path))
+        
+    except Exception as e:
+        logger.error(f"Download dependencies error: {repr(e)}")
+        msg = f"Failed to download dependencies: {repr(e)}"
+        if progress_callback:
+            progress_callback(msg)
+        return (None, None)
+
+
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
@@ -626,6 +826,9 @@ Examples:
     parser.add_argument('--gui',
                        action='store_true',
                        help='Run in GUI mode (default when no arguments provided)')
+    parser.add_argument('--auto-download-dependencies',
+                       action='store_true',
+                       help='Automatically download dependencies if not found (HandBrakeCLI, ffprobe)')
     
     args = parser.parse_args()
     
@@ -719,6 +922,23 @@ Examples:
     if not validate_quality(quality):
         logger.error(f"Invalid quality value in config: {quality!r}. Must be an integer between 0 and 51.")
         sys.exit(1)
+    
+    # Auto-download dependencies if requested
+    if args.auto_download_dependencies:
+        logger.info("Auto-downloading dependencies...")
+        handbrake_path, ffprobe_path = download_dependencies()
+        
+        if handbrake_path and ffprobe_path:
+            # Update dependency config with downloaded paths
+            if 'dependencies' not in config:
+                config['dependencies'] = {}
+            config['dependencies']['handbrake'] = handbrake_path
+            config['dependencies']['ffprobe'] = ffprobe_path
+            dependency_config = config['dependencies']
+            logger.info(f"Dependencies downloaded: HandBrakeCLI={handbrake_path}, ffprobe={ffprobe_path}")
+        else:
+            logger.error("Failed to download dependencies. Please install manually.")
+            sys.exit(1)
     
     # Check dependencies
     check_dependencies(dependency_config)
