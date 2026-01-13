@@ -364,7 +364,12 @@ def parse_file_size(size_str):
 
 
 def load_config(config_path=None):
-    """Load configuration from YAML file."""
+    """Load configuration from YAML file.
+    
+    After loading, resolves dependency paths to check for bundled executables
+    in PyInstaller bundles. This ensures all consumers of the config receive
+    properly resolved paths.
+    """
     default_config = {
         'directory': None,
         'min_file_size': '1GB',
@@ -394,59 +399,71 @@ def load_config(config_path=None):
     
     if not config_path.exists():
         logger.debug(f"Config file not found: {config_path}, using defaults")
-        return default_config
+        config = default_config
+    else:
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                user_config = yaml.safe_load(f)
+                # Handle None, False, or other falsy/invalid values
+                if not isinstance(user_config, dict):
+                    user_config = {}
+            
+            # Merge with defaults
+            config = {**default_config, **user_config}
+            
+            # Merge output settings if present, handling None and type safety
+            if 'output' in user_config:
+                if user_config['output'] is None:
+                    # User explicitly set output: null; restore default nested output config
+                    config['output'] = default_config['output']
+                elif isinstance(user_config['output'], dict):
+                    # Merge user-provided output settings into the default output config
+                    config['output'] = {**default_config['output'], **user_config['output']}
+                else:
+                    # Invalid output type; fall back to defaults to avoid runtime errors
+                    config['output'] = default_config['output']
+            
+            # Merge dependencies settings if present, handling None and type safety
+            if 'dependencies' in user_config:
+                if user_config['dependencies'] is None:
+                    # User explicitly set dependencies: null; restore default dependencies config
+                    config['dependencies'] = default_config['dependencies']
+                elif isinstance(user_config['dependencies'], dict):
+                    # Merge user-provided dependencies settings into the default dependencies config
+                    config['dependencies'] = {**default_config['dependencies'], **user_config['dependencies']}
+                else:
+                    # Invalid dependencies type; fall back to defaults to avoid runtime errors
+                    config['dependencies'] = default_config['dependencies']
+            
+            # Merge logging settings if present, handling None and type safety
+            if 'logging' in user_config:
+                if user_config['logging'] is None:
+                    # User explicitly set logging: null; restore default logging config
+                    config['logging'] = default_config['logging']
+                elif isinstance(user_config['logging'], dict):
+                    # Merge user-provided logging settings into the default logging config
+                    config['logging'] = {**default_config['logging'], **user_config['logging']}
+                else:
+                    # Invalid logging type; fall back to defaults to avoid runtime errors
+                    config['logging'] = default_config['logging']
+            
+            logger.info(f"Loaded configuration from {config_path}")
+        except (OSError, IOError, yaml.YAMLError) as e:
+            logger.error(f"Error loading config file {config_path}: {e}")
+            config = default_config
     
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            user_config = yaml.safe_load(f)
-            # Handle None, False, or other falsy/invalid values
-            if not isinstance(user_config, dict):
-                user_config = {}
-        
-        # Merge with defaults
-        config = {**default_config, **user_config}
-        
-        # Merge output settings if present, handling None and type safety
-        if 'output' in user_config:
-            if user_config['output'] is None:
-                # User explicitly set output: null; restore default nested output config
-                config['output'] = default_config['output']
-            elif isinstance(user_config['output'], dict):
-                # Merge user-provided output settings into the default output config
-                config['output'] = {**default_config['output'], **user_config['output']}
-            else:
-                # Invalid output type; fall back to defaults to avoid runtime errors
-                config['output'] = default_config['output']
-        
-        # Merge dependencies settings if present, handling None and type safety
-        if 'dependencies' in user_config:
-            if user_config['dependencies'] is None:
-                # User explicitly set dependencies: null; restore default dependencies config
-                config['dependencies'] = default_config['dependencies']
-            elif isinstance(user_config['dependencies'], dict):
-                # Merge user-provided dependencies settings into the default dependencies config
-                config['dependencies'] = {**default_config['dependencies'], **user_config['dependencies']}
-            else:
-                # Invalid dependencies type; fall back to defaults to avoid runtime errors
-                config['dependencies'] = default_config['dependencies']
-        
-        # Merge logging settings if present, handling None and type safety
-        if 'logging' in user_config:
-            if user_config['logging'] is None:
-                # User explicitly set logging: null; restore default logging config
-                config['logging'] = default_config['logging']
-            elif isinstance(user_config['logging'], dict):
-                # Merge user-provided logging settings into the default logging config
-                config['logging'] = {**default_config['logging'], **user_config['logging']}
-            else:
-                # Invalid logging type; fall back to defaults to avoid runtime errors
-                config['logging'] = default_config['logging']
-        
-        logger.info(f"Loaded configuration from {config_path}")
-        return config
-    except (OSError, IOError, yaml.YAMLError) as e:
-        logger.error(f"Error loading config file {config_path}: {e}")
-        return default_config
+    # Resolve dependency paths after loading configuration
+    # This checks for bundled executables in PyInstaller bundles and resolves paths
+    config['dependencies']['handbrake'] = find_dependency_path(
+        'HandBrakeCLI', 
+        config['dependencies'].get('handbrake', 'HandBrakeCLI')
+    )
+    config['dependencies']['ffprobe'] = find_dependency_path(
+        'ffprobe',
+        config['dependencies'].get('ffprobe', 'ffprobe')
+    )
+    
+    return config
 
 
 def check_dependencies(dependency_paths=None):
@@ -455,6 +472,9 @@ def check_dependencies(dependency_paths=None):
     Args:
         dependency_paths: Optional dict with 'handbrake' and 'ffprobe' keys
                          specifying paths to executables. If None, uses default names.
+                         
+    Note:
+        Paths should already be resolved by load_config() to handle PyInstaller bundles.
     """
     if dependency_paths is None:
         dependency_paths = {
@@ -462,10 +482,9 @@ def check_dependencies(dependency_paths=None):
             'ffprobe': 'ffprobe'
         }
     
-    # Resolve dependency paths (check bundle directory if running as PyInstaller executable)
     dependencies = {
-        'ffprobe': find_dependency_path('ffprobe', dependency_paths.get('ffprobe', 'ffprobe')),
-        'HandBrakeCLI': find_dependency_path('HandBrakeCLI', dependency_paths.get('handbrake', 'HandBrakeCLI'))
+        'ffprobe': dependency_paths.get('ffprobe', 'ffprobe'),
+        'HandBrakeCLI': dependency_paths.get('handbrake', 'HandBrakeCLI')
     }
     missing = []
     
@@ -518,12 +537,13 @@ def get_codec(file_path, dependency_config=None):
     
     Args:
         file_path: Path to the video file
-        dependency_config: Optional dict with 'ffprobe' key specifying path to ffprobe
+        dependency_config: Optional dict with 'ffprobe' key specifying path to ffprobe.
+                          Path should already be resolved by load_config() for PyInstaller bundles.
     """
     if dependency_config is None:
         dependency_config = {}
     
-    ffprobe_path = find_dependency_path('ffprobe', dependency_config.get('ffprobe', 'ffprobe'))
+    ffprobe_path = dependency_config.get('ffprobe', 'ffprobe')
     
     command_args = [ffprobe_path, '-v', 'error', '-select_streams', 'v:0', 
              '-show_entries', 'stream=codec_name',
@@ -542,12 +562,13 @@ def get_duration(file_path, dependency_config=None):
     
     Args:
         file_path: Path to the video file
-        dependency_config: Optional dict with 'ffprobe' key specifying path to ffprobe
+        dependency_config: Optional dict with 'ffprobe' key specifying path to ffprobe.
+                          Path should already be resolved by load_config() for PyInstaller bundles.
     """
     if dependency_config is None:
         dependency_config = {}
     
-    ffprobe_path = find_dependency_path('ffprobe', dependency_config.get('ffprobe', 'ffprobe'))
+    ffprobe_path = dependency_config.get('ffprobe', 'ffprobe')
     
     try:
         result = run_command(
@@ -642,7 +663,7 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
     if dependency_config is None:
         dependency_config = {}
     
-    handbrake_path = find_dependency_path('HandBrakeCLI', dependency_config.get('handbrake', 'HandBrakeCLI'))
+    handbrake_path = dependency_config.get('handbrake', 'HandBrakeCLI')
     
     output_format = output_config.get('format', 'mkv')
     encoder_type = output_config.get('encoder', 'x265_10bit')
