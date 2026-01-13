@@ -259,19 +259,25 @@ def check_single_dependency(command):
                - (False, "invalid") if command exists but is not valid
                - (False, "timeout") if command timed out
     """
-    try:
-        subprocess.run([command, '--version'], 
-                      stdout=subprocess.PIPE, 
-                      stderr=subprocess.PIPE,
-                      check=True,
-                      timeout=5)
-        return True, None
-    except FileNotFoundError:
-        return False, "not_found"
-    except subprocess.CalledProcessError:
-        return False, "invalid"
-    except subprocess.TimeoutExpired:
-        return False, "timeout"
+    # Try both --version (for HandBrakeCLI) and -version (for ffprobe/ffmpeg)
+    for version_flag in ['--version', '-version']:
+        try:
+            subprocess.run([command, version_flag], 
+                          stdout=subprocess.PIPE, 
+                          stderr=subprocess.PIPE,
+                          check=True,
+                          timeout=5)
+            return True, None
+        except FileNotFoundError:
+            return False, "not_found"
+        except subprocess.CalledProcessError:
+            # Try next version flag
+            continue
+        except subprocess.TimeoutExpired:
+            return False, "timeout"
+    
+    # If both version flags failed, the executable exists but is invalid
+    return False, "invalid"
 
 
 def get_codec(file_path, dependency_config=None):
