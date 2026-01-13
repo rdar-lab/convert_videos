@@ -432,12 +432,12 @@ def main():
         # Create distribution package
         print("\nCreating distribution package...")
         create_distribution_package(target_platform)
-        print("\n✓ Build completed successfully!")
+        print("\n[SUCCESS] Build completed successfully!")
         exe_extension = '.exe' if target_platform == 'windows' else ''
         print(f"\nExecutable location: dist/convert_videos{exe_extension}")
         print(f"Distribution package: dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
     else:
-        print("\n✗ Build failed!")
+        print("\n[FAILED] Build failed!")
         sys.exit(1)
 
 
