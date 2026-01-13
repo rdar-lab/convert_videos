@@ -89,8 +89,25 @@ git push origin v1.0.0
 
 This will:
 1. Build executables for Linux, Windows, and macOS
-2. Create a GitHub Release
-3. Upload all platform packages as release assets
+2. Build and push Docker image to DockerHub (if secrets are configured)
+3. Create a GitHub Release
+4. Upload all platform packages as release assets
+
+### Docker Image Publishing
+
+The workflow automatically builds and publishes Docker images to DockerHub when:
+- A version tag is pushed (e.g., `v1.0.0`)
+- DockerHub secrets are configured
+
+**Required Secrets:**
+- `DOCKERHUB_USERNAME` - Your DockerHub username
+- `DOCKERHUB_TOKEN` - Your DockerHub access token
+
+**Tags Created:**
+- `{username}/convert_videos:{version}` - Specific version (e.g., `v1.0.0`)
+- `{username}/convert_videos:latest` - Latest release
+
+If the secrets are not configured, the Docker build step is skipped, and only executables are built.
 
 ### Manual Trigger
 
