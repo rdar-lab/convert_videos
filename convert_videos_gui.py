@@ -534,6 +534,7 @@ class VideoConverterGUI:
         # Validate dependencies
         handbrake_path = self.handbrake_entry.get().strip()
         ffprobe_path = self.ffprobe_entry.get().strip()
+        ffmpeg_path = self.ffmpeg_entry.get().strip()
         
         if handbrake_path:
             success, error_type = convert_videos.check_single_dependency(handbrake_path)
@@ -554,6 +555,16 @@ class VideoConverterGUI:
                     errors.append(f"ffprobe exists but is not a valid executable: {ffprobe_path}")
                 elif error_type == "timeout":
                     errors.append(f"ffprobe timed out: {ffprobe_path}")
+        
+        if ffmpeg_path:
+            success, error_type = convert_videos.check_single_dependency(ffmpeg_path)
+            if not success:
+                if error_type == "not_found":
+                    errors.append(f"ffmpeg not found: {ffmpeg_path}")
+                elif error_type == "invalid":
+                    errors.append(f"ffmpeg exists but is not a valid executable: {ffmpeg_path}")
+                elif error_type == "timeout":
+                    errors.append(f"ffmpeg timed out: {ffmpeg_path}")
         
         # Display results
         if errors:
