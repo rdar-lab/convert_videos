@@ -1034,14 +1034,15 @@ class TestBundledDependencies(unittest.TestCase):
     @patch('convert_videos.sys')
     def test_get_bundled_path_frozen(self, mock_sys):
         """Test get_bundled_path returns bundle path when running as PyInstaller bundle."""
-        # Mock PyInstaller frozen state
-        mock_sys.frozen = True
-        mock_sys._MEIPASS = '/tmp/meipass123'
-        
-        result = convert_videos.get_bundled_path()
-        
-        self.assertIsNotNone(result)
-        self.assertEqual(str(result), '/tmp/meipass123')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Mock PyInstaller frozen state
+            mock_sys.frozen = True
+            mock_sys._MEIPASS = tmpdir
+            
+            result = convert_videos.get_bundled_path()
+            
+            self.assertIsNotNone(result)
+            self.assertEqual(str(result), tmpdir)
     
     def test_find_dependency_path_with_absolute_config(self):
         """Test that absolute paths from config are used directly."""

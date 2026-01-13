@@ -28,7 +28,7 @@ jobs:
     
     - name: Run unit tests
       run: |
-        pytest test_convert_videos.py -v --cov=convert_videos --cov-report=term-missing
+        pytest -v --cov=convert_videos --cov-report=term-missing
     
     - name: Upload coverage reports
       uses: codecov/codecov-action@v4
