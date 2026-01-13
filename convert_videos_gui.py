@@ -51,6 +51,11 @@ class VideoConverterGUI:
         self.config = convert_videos.load_config()
         self.config_file_path = Path('config.yaml')
         
+        # Log bundled dependency paths for debugging
+        deps = self.config.get('dependencies', {})
+        logger.info(f"GUI initialized with HandBrakeCLI path: {deps.get('handbrake')}")
+        logger.info(f"GUI initialized with ffprobe path: {deps.get('ffprobe')}")
+        
         # Queue and results
         self.file_queue = []
         self.current_file = None
@@ -176,13 +181,13 @@ class VideoConverterGUI:
         dependency_config = self.config.get('dependencies', {})
         
         ttk.Label(deps_frame, text="HandBrakeCLI:").grid(row=0, column=0, sticky='w', pady=5)
-        self.handbrake_entry = ttk.Entry(deps_frame, width=40)
+        self.handbrake_entry = ttk.Entry(deps_frame, width=60)
         self.handbrake_entry.grid(row=0, column=1, padx=5, pady=5)
         self.handbrake_entry.insert(0, dependency_config.get('handbrake') or 'HandBrakeCLI')
         ttk.Button(deps_frame, text="Browse...", command=self.browse_handbrake).grid(row=0, column=2, pady=5)
         
         ttk.Label(deps_frame, text="ffprobe:").grid(row=1, column=0, sticky='w', pady=5)
-        self.ffprobe_entry = ttk.Entry(deps_frame, width=40)
+        self.ffprobe_entry = ttk.Entry(deps_frame, width=60)
         self.ffprobe_entry.grid(row=1, column=1, padx=5, pady=5)
         self.ffprobe_entry.insert(0, dependency_config.get('ffprobe') or 'ffprobe')
         ttk.Button(deps_frame, text="Browse...", command=self.browse_ffprobe).grid(row=1, column=2, pady=5)

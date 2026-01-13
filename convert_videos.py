@@ -92,11 +92,13 @@ def find_dependency_path(dependency_name, config_path=None):
     if config_path:
         config_path_obj = Path(config_path)
         if config_path_obj.is_absolute() and config_path_obj.exists():
+            logger.info(f"Using absolute config path for {dependency_name}: {config_path}")
             return str(config_path)
     
     # Check if running as PyInstaller bundle
     bundle_dir = get_bundled_path()
     if bundle_dir:
+        logger.info(f"Running as PyInstaller bundle, checking for {dependency_name} in {bundle_dir}")
         # Look for dependency in bundle directory
         # Check for .exe extension on Windows
         if platform.system() == 'Windows':
@@ -106,12 +108,18 @@ def find_dependency_path(dependency_name, config_path=None):
         
         bundled_path = bundle_dir / exe_name
         if bundled_path.exists():
-            logger.debug(f"Found bundled dependency: {bundled_path}")
+            logger.info(f"Found bundled dependency: {bundled_path}")
             return str(bundled_path)
+        else:
+            logger.warning(f"Bundled dependency not found: {bundled_path}")
+    else:
+        logger.debug(f"Not running as PyInstaller bundle (frozen={getattr(sys, 'frozen', False)})")
     
     # Fall back to config_path if provided, otherwise use dependency_name
     # (will be resolved via PATH)
-    return config_path if config_path else dependency_name
+    result = config_path if config_path else dependency_name
+    logger.info(f"Using fallback path for {dependency_name}: {result}")
+    return result
 
 
 def setup_logging(log_file_path=None):
