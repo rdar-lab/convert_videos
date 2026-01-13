@@ -330,6 +330,18 @@ class VideoConverterGUI:
         except ValueError:
             errors.append("Quality must be an integer")
         
+        # Validate dependencies
+        handbrake_path = self.handbrake_entry.get().strip()
+        ffprobe_path = self.ffprobe_entry.get().strip()
+        
+        if handbrake_path:
+            if not convert_videos.check_dependency(handbrake_path):
+                errors.append(f"HandBrakeCLI not found: {handbrake_path}")
+        
+        if ffprobe_path:
+            if not convert_videos.check_dependency(ffprobe_path):
+                errors.append(f"ffprobe not found: {ffprobe_path}")
+        
         # Display results
         if errors:
             self.validation_label.config(text="❌ Validation failed", foreground="red")
@@ -337,13 +349,23 @@ class VideoConverterGUI:
             return False
         else:
             self.validation_label.config(text="✅ Configuration is valid", foreground="green")
-            messagebox.showinfo("Validation Success", "Configuration is valid!")
             return True
             
     def save_config(self):
         """Save the current configuration to file."""
         if not self.validate_config():
             return
+        
+        # Ask user where to save the file
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".yaml",
+            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")],
+            initialfile="config.yaml",
+            title="Save Configuration"
+        )
+        
+        if not file_path:
+            return  # User cancelled
         
         config = {
             'directory': self.dir_entry.get().strip(),
@@ -364,11 +386,12 @@ class VideoConverterGUI:
         }
         
         try:
-            with open(self.config_file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 yaml.dump(config, f, default_flow_style=False, sort_keys=False)
             
             self.config = config
-            messagebox.showinfo("Success", f"Configuration saved to {self.config_file_path}")
+            self.config_file_path = Path(file_path)
+            messagebox.showinfo("Success", f"Configuration saved to {file_path}")
         except Exception as e:
             messagebox.showerror("Save Error", f"Failed to save configuration: {e}")
             
@@ -421,7 +444,26 @@ class VideoConverterGUI:
         
     def scan_files(self):
         """Scan directory for eligible files."""
-        if not self.validate_config():
+        # Validate without showing popup
+        errors = []
+        
+        # Validate directory
+        directory = self.dir_entry.get().strip()
+        if not directory:
+            errors.append("Directory is required")
+        elif not os.path.isdir(directory):
+            errors.append(f"Directory does not exist: {directory}")
+        
+        # Validate min file size
+        try:
+            min_size = self.min_size_entry.get().strip()
+            convert_videos.parse_file_size(min_size)
+        except ValueError as e:
+            errors.append(f"Invalid min file size: {e}")
+        
+        if errors:
+            self.validation_label.config(text="❌ Validation failed", foreground="red")
+            messagebox.showerror("Validation Errors", "\n".join(errors))
             return
         
         self.scan_button.config(state='disabled')

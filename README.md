@@ -136,13 +136,13 @@ python convert_videos.py --background "C:\Path\To\Videos"
 **Install dependencies:**
 ```bash
 # Ubuntu/Debian
-sudo apt-get install python3 python3-pip python3-tk ffmpeg handbrake-cli
+sudo apt-get install python3 python3-pip ffmpeg handbrake-cli
 
 # Install Python dependencies
 pip3 install -r requirements.txt
 
 # macOS (using Homebrew)
-brew install python3 ffmpeg handbrake python-tk
+brew install python3 ffmpeg handbrake
 pip3 install -r requirements.txt
 ```
 

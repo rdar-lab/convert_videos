@@ -151,7 +151,7 @@ def load_config(config_path=None):
             'handbrake': 'HandBrakeCLI',
             'ffprobe': 'ffprobe'
         },
-        'remove_original_files': False,  # Changed from preserve_original
+        'remove_original_files': False,
         'loop': False,
         'dry_run': False
     }
@@ -414,7 +414,6 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         logger.info(f"Mapped preset '{encoder_preset}' to '{effective_preset}' for encoder '{encoder_type}'")
     
     # Avoid collisions with existing output or temp files
-    # Use .converted instead of " - New"
     base_name = f"{input_path.stem}.converted"
     output_path = input_path.with_name(f"{base_name}.{output_format}")
     temp_output = output_path.with_suffix(f'.{output_format}.temp')
@@ -615,12 +614,12 @@ Examples:
             import convert_videos_gui
             convert_videos_gui.main()
         except ImportError as e:
-            logger.error(f"Failed to import GUI module: {e}")
-            logger.error("Make sure convert_videos_gui.py is available and tkinter is installed")
+            logger.error(f"Failed to import GUI module: {repr(e)}")
+            logger.error("Make sure tkinter is installed")
             logger.error("To run in background mode, use: --background or provide arguments")
             sys.exit(1)
         except Exception as e:
-            logger.error(f"Failed to launch GUI: {e}")
+            logger.error(f"Failed to launch GUI: {repr(e)}")
             logger.error("To run in background mode, use: --background or provide arguments")
             sys.exit(1)
         return
@@ -633,23 +632,14 @@ Examples:
     dry_run = args.dry_run or config.get('dry_run', False)
     loop_mode = args.loop or config.get('loop', False)
     
-    # Handle both old preserve_original and new remove_original_files config keys
-    # Default is to preserve (not remove) original files
+    # Get remove_original_files config
     remove_original = config.get('remove_original_files', False)
-    preserve_from_old_config = config.get('preserve_original')
-    if preserve_from_old_config is not None:
-        # If old config exists, convert it to new logic
-        remove_original = not preserve_from_old_config
     
     # Command line flag overrides config
     if args.preserve_original:
         remove_original = False
     
     preserve_original = not remove_original
-    
-    # Check for environment variable override (maintain backward compatibility)
-    if os.getenv("VIDEO_CONVERTER_PRESERVE_ORIGINAL", "").lower() in ("1", "true", "yes"):
-        preserve_original = True
     
     # Get output configuration
     output_config = config.get('output', {})
