@@ -3,6 +3,8 @@
 Unit tests for convert_videos.py
 """
 
+import os
+import subprocess
 import unittest
 from unittest.mock import patch, MagicMock
 import tempfile
@@ -838,8 +840,6 @@ class TestLoggingFunctionality(unittest.TestCase):
     
     def test_setup_logging_default_path(self):
         """Test that setup_logging creates log file in default temp directory."""
-        import logging
-        
         # Setup logging without specifying a path
         log_path = convert_videos.setup_logging()
         
@@ -873,7 +873,6 @@ class TestLoggingFunctionality(unittest.TestCase):
             log_path = Path(tmpdir) / 'env_log.log'
             
             # Set environment variable
-            import os
             old_env = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
             try:
                 os.environ['VIDEO_CONVERTER_LOG_FILE'] = str(log_path)
@@ -941,8 +940,6 @@ class TestLoggingFunctionality(unittest.TestCase):
     @patch('convert_videos.subprocess.run')
     def test_run_command_logs_failure(self, mock_run):
         """Test that run_command logs command failures."""
-        import subprocess
-        
         # Mock subprocess failure
         mock_run.side_effect = subprocess.CalledProcessError(
             1, ['false'], output="out", stderr="err"
