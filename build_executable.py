@@ -91,16 +91,19 @@ def extract_archive(archive_path, extract_to):
 
 
 def download_handbrake(platform_name, download_dir):
-    """Download HandBrakeCLI for the specified platform."""
+    """Download HandBrakeCLI for the specified platform.
+    
+    Note: For Linux and macOS, this relies on system installation or manual bundling
+    as HandBrake doesn't provide easily extractable binaries for these platforms.
+    """
     handbrake_dir = download_dir / 'handbrake'
     handbrake_dir.mkdir(exist_ok=True)
     
     # HandBrake CLI download URLs
-    # Note: These are examples. Update with actual stable release URLs
+    # Note: Only Windows provides a zip with extractable binary
     urls = {
         'windows': f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-win-x86_64.zip',
-        'linux': f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-x86_64.flatpak',  # Alternative: build from source
-        'macos': f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-x86_64.dmg'
+        # Linux and macOS: Use system installation via apt/brew
     }
     
     if platform_name not in urls:
@@ -185,10 +188,13 @@ binaries = []
     if binaries_data:
         spec_content += f"# Bundled binaries\n"
         if 'handbrake' in binaries_data and binaries_data['handbrake']:
-            spec_content += f"binaries.append(('{binaries_data['handbrake']}', '.'))\n"
+            handbrake_path = repr(binaries_data['handbrake'])
+            spec_content += f"binaries.append(({handbrake_path}, '.'))\n"
         if 'ffmpeg' in binaries_data and binaries_data['ffmpeg']:
-            spec_content += f"binaries.append(('{binaries_data['ffmpeg']['ffmpeg']}', '.'))\n"
-            spec_content += f"binaries.append(('{binaries_data['ffmpeg']['ffprobe']}', '.'))\n"
+            ffmpeg_path = repr(binaries_data['ffmpeg']['ffmpeg'])
+            ffprobe_path = repr(binaries_data['ffmpeg']['ffprobe'])
+            spec_content += f"binaries.append(({ffmpeg_path}, '.'))\n"
+            spec_content += f"binaries.append(({ffprobe_path}, '.'))\n"
     
     spec_content += """
 a = Analysis(
@@ -342,10 +348,13 @@ def main():
                     'ffprobe': str(ffmpeg_bins['ffprobe'])
                 }
         else:
-            binaries_data['ffmpeg'] = {
-                'ffmpeg': args.ffmpeg_path,
-                'ffprobe': args.ffprobe_path
-            }
+            if args.ffmpeg_path and args.ffprobe_path:
+                binaries_data['ffmpeg'] = {
+                    'ffmpeg': args.ffmpeg_path,
+                    'ffprobe': args.ffprobe_path
+                }
+            elif args.ffmpeg_path or args.ffprobe_path:
+                print("Warning: Both --ffmpeg-path and --ffprobe-path must be provided together")
     
     # Create spec file
     print("\nCreating PyInstaller spec file...")
