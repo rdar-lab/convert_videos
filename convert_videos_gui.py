@@ -435,75 +435,10 @@ class VideoConverterGUI:
             return False
         else:
             self.validation_label.config(text="✅ Configuration is valid", foreground="green")
+            self.config = self.generate_config()
             return True
-            
-    def save_config(self):
-        """Save the current configuration to file."""
-        # Validate silently first
-        errors = []
-        
-        # Validate directory
-        directory = self.dir_entry.get().strip()
-        if not directory:
-            errors.append("Directory is required")
-        elif not os.path.isdir(directory):
-            errors.append(f"Directory does not exist: {directory}")
-        
-        # Validate min file size
-        try:
-            min_size = self.min_size_entry.get().strip()
-            convert_videos.parse_file_size(min_size)
-        except ValueError as e:
-            errors.append(f"Invalid min file size: {e}")
-        
-        # Validate quality
-        try:
-            quality = int(self.quality_entry.get().strip())
-            if not (0 <= quality <= 51):
-                errors.append("Quality must be between 0 and 51")
-        except ValueError:
-            errors.append("Quality must be an integer")
-        
-        # Validate dependencies
-        handbrake_path = self.handbrake_entry.get().strip()
-        ffprobe_path = self.ffprobe_entry.get().strip()
-        
-        if handbrake_path:
-            success, error_type = convert_videos.check_single_dependency(handbrake_path)
-            if not success:
-                if error_type == "not_found":
-                    errors.append(f"HandBrakeCLI not found: {handbrake_path}")
-                elif error_type == "invalid":
-                    errors.append(f"HandBrakeCLI exists but is not a valid executable: {handbrake_path}")
-                elif error_type == "timeout":
-                    errors.append(f"HandBrakeCLI timed out: {handbrake_path}")
-        
-        if ffprobe_path:
-            success, error_type = convert_videos.check_single_dependency(ffprobe_path)
-            if not success:
-                if error_type == "not_found":
-                    errors.append(f"ffprobe not found: {ffprobe_path}")
-                elif error_type == "invalid":
-                    errors.append(f"ffprobe exists but is not a valid executable: {ffprobe_path}")
-                elif error_type == "timeout":
-                    errors.append(f"ffprobe timed out: {ffprobe_path}")
-        
-        if errors:
-            self.validation_label.config(text="❌ Validation failed", foreground="red")
-            messagebox.showerror("Validation Errors", "\n".join(errors))
-            return
-        
-        # Ask user where to save the file
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".yaml",
-            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")],
-            initialfile="config.yaml",
-            title="Save Configuration"
-        )
-        
-        if not file_path:
-            return  # User cancelled
-        
+
+    def generate_config(self):
         config = {
             'directory': self.dir_entry.get().strip(),
             'min_file_size': self.min_size_entry.get().strip(),
@@ -521,7 +456,29 @@ class VideoConverterGUI:
             'dry_run': self.dry_run_var.get(),
             'loop': False  # GUI mode doesn't use loop
         }
+        return config
+
+    def save_config(self):
+        # Validate silently first
+        is_valid = self.validate_config()
+        if not is_valid:
+            return
+       
+        config = self.generate_config()
+
+        """Save the current configuration to file."""
+
+        # Ask user where to save the file
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".yaml",
+            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")],
+            initialfile="config.yaml",
+            title="Save Configuration"
+        )
         
+        if not file_path:
+            return  # User cancelled
+
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
                 yaml.dump(config, f, default_flow_style=False, sort_keys=False)

@@ -233,7 +233,10 @@ def check_dependencies(dependency_paths=None):
     
     for name, path in dependencies.items():
         try:
-            subprocess.run([path, '--version'], 
+            command_args = [path, '--version']
+            logger.info(f"Running {command_args}")
+
+            subprocess.run(command_args, 
                           stdout=subprocess.PIPE, 
                           stderr=subprocess.PIPE,
                           check=True)
@@ -262,7 +265,10 @@ def check_single_dependency(command):
     # Try both --version (for HandBrakeCLI) and -version (for ffprobe/ffmpeg)
     for version_flag in ['--version', '-version']:
         try:
-            subprocess.run([command, version_flag], 
+            command_args = [command, version_flag]
+            logger.info(f"Running {command_args}")
+
+            subprocess.run(command_args,
                           stdout=subprocess.PIPE, 
                           stderr=subprocess.PIPE,
                           check=True,
@@ -292,11 +298,14 @@ def get_codec(file_path, dependency_config=None):
     
     ffprobe_path = dependency_config.get('ffprobe', 'ffprobe')
     
-    try:
-        result = subprocess.run(
-            [ffprobe_path, '-v', 'error', '-select_streams', 'v:0', 
+    command_args = [ffprobe_path, '-v', 'error', '-select_streams', 'v:0', 
              '-show_entries', 'stream=codec_name',
-             '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
+             '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)]
+
+    logger.info(f"Running {command_args}")
+    
+    try:
+        result = subprocess.run(command_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -513,14 +522,18 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         if sys.platform == 'win32':
             # Windows: Use BELOW_NORMAL_PRIORITY_CLASS (0x00004000)
             BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+            logger.info(f"Running {cmd}")
             subprocess.run(cmd, check=True, 
                           creationflags=BELOW_NORMAL_PRIORITY_CLASS)
         else:
             # Linux/Unix: Try to use nice if available, otherwise run without it
             try:
-                subprocess.run(['nice', '-n', '10'] + cmd, check=True)
+                command_args = ['nice', '-n', '10'] + cmd
+                logger.info(f"Running {command_args}")
+                subprocess.run(command_args, check=True)
             except FileNotFoundError:
                 # nice not available, run without it
+                logger.info(f"Running {cmd}")
                 subprocess.run(cmd, check=True)
         
         # Validate and finalize
