@@ -774,7 +774,13 @@ class TestCheckDependencies(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         
         # Check that custom paths were used in the calls
-        called_paths = [call[0][0][0] for call in calls]
+        called_paths = []
+        for call in calls:
+            call_args = call[0]
+            command = call_args[0]
+            executable = command[0]
+            called_paths.append(executable)
+        
         self.assertIn('/custom/ffprobe', called_paths)
         self.assertIn('/custom/HandBrakeCLI', called_paths)
     
@@ -813,7 +819,13 @@ class TestCheckDependencies(unittest.TestCase):
         calls = mock_run.call_args_list
         self.assertEqual(len(calls), 2)
         
-        called_paths = [call[0][0][0] for call in calls]
+        called_paths = []
+        for call in calls:
+            call_args = call[0]
+            command = call_args[0]
+            executable = command[0]
+            called_paths.append(executable)
+        
         self.assertIn('/custom/HandBrakeCLI', called_paths)
         self.assertIn('ffprobe', called_paths)
 
