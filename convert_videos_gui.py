@@ -17,6 +17,7 @@ import tempfile
 
 import convert_videos
 import duplicate_detector
+from PIL import Image, ImageTk
 
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,8 @@ class VideoConverterGUI:
         self.duplicate_results = []
         self.duplicate_scan_running = False
         self.duplicate_progress_queue = queue.Queue()  # Separate queue for duplicate detection
+        self.thumbnail_tooltip = None  # For showing thumbnail on hover
+        self.thumbnail_images = {}  # Keep references to prevent garbage collection
         
         # Thread communication
         self.progress_queue = queue.Queue()
@@ -387,6 +390,10 @@ class VideoConverterGUI:
         self.duplicates_tree.pack(side='left', fill='both', expand=True)
         tree_scroll_y.pack(side='right', fill='y')
         tree_scroll_x.pack(side='bottom', fill='x')
+        
+        # Bind mouse events for thumbnail tooltips
+        self.duplicates_tree.bind('<Motion>', self.show_thumbnail_tooltip)
+        self.duplicates_tree.bind('<Leave>', self.hide_thumbnail_tooltip)
         
         # Summary label
         self.dup_summary_label = ttk.Label(self.duplicates_tab, text="No duplicates found yet")
@@ -1302,6 +1309,75 @@ class VideoConverterGUI:
         except Exception as e:
             logger.error(f"Clear duplicate results error: {repr(e)}")
             messagebox.showerror("Clear Error", f"Failed to clear results:\n{repr(e)}")
+    
+    def show_thumbnail_tooltip(self, event):
+        """Show thumbnail image tooltip on mouse hover."""
+        try:
+            # Get the item and column under the mouse
+            item = self.duplicates_tree.identify_row(event.y)
+            column = self.duplicates_tree.identify_column(event.x)
+            
+            if not item or column != '#3':  # Only show for Thumbnail column
+                self.hide_thumbnail_tooltip(None)
+                return
+            
+            # Get the thumbnail path from the cell
+            values = self.duplicates_tree.item(item, 'values')
+            if not values or len(values) < 3 or not values[2]:
+                self.hide_thumbnail_tooltip(None)
+                return
+            
+            thumbnail_path = values[2]
+            
+            # Check if file exists
+            if not os.path.exists(thumbnail_path):
+                self.hide_thumbnail_tooltip(None)
+                return
+            
+            # If tooltip already showing this image, don't recreate
+            if self.thumbnail_tooltip and hasattr(self.thumbnail_tooltip, 'current_path'):
+                if self.thumbnail_tooltip.current_path == thumbnail_path:
+                    return
+            
+            # Hide existing tooltip
+            self.hide_thumbnail_tooltip(None)
+            
+            # Create new tooltip window
+            self.thumbnail_tooltip = tk.Toplevel(self.root)
+            self.thumbnail_tooltip.wm_overrideredirect(True)
+            self.thumbnail_tooltip.current_path = thumbnail_path
+            
+            # Load and display image
+            img = Image.open(thumbnail_path)
+            # Resize if too large
+            max_size = (400, 300)
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            
+            # Convert to PhotoImage and keep reference
+            photo = ImageTk.PhotoImage(img)
+            self.thumbnail_images[thumbnail_path] = photo
+            
+            # Create label with image
+            label = tk.Label(self.thumbnail_tooltip, image=photo, borderwidth=2, relief='solid')
+            label.pack()
+            
+            # Position tooltip near mouse
+            x = event.x_root + 10
+            y = event.y_root + 10
+            self.thumbnail_tooltip.wm_geometry(f"+{x}+{y}")
+            
+        except Exception as e:
+            logger.error(f"Error showing thumbnail tooltip: {repr(e)}")
+            self.hide_thumbnail_tooltip(None)
+    
+    def hide_thumbnail_tooltip(self, event):
+        """Hide thumbnail tooltip."""
+        if self.thumbnail_tooltip:
+            try:
+                self.thumbnail_tooltip.destroy()
+            except Exception:
+                pass
+            self.thumbnail_tooltip = None
             
     @staticmethod
     def format_size(size_bytes):
