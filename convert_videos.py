@@ -698,19 +698,27 @@ def download_dependencies(progress_callback=None):
                 with zipfile.ZipFile(handbrake_archive, 'r') as zip_ref:
                     zip_ref.extractall(deps_dir / "handbrake_temp")
                 # Find HandBrakeCLI executable in extracted files
+                handbrake_found = False
                 for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
                     if handbrake_exe in files:
                         shutil.copy2(Path(root) / handbrake_exe, deps_dir / handbrake_exe)
+                        handbrake_found = True
                         break
+                if not handbrake_found:
+                    raise Exception(f"Could not find {handbrake_exe} in downloaded archive")
                 shutil.rmtree(deps_dir / "handbrake_temp")
             elif handbrake_archive.suffix in [".tar", ".xz", ".gz"]:
                 with tarfile.open(handbrake_archive, 'r:*') as tar_ref:
                     tar_ref.extractall(deps_dir / "handbrake_temp")
                 # Find HandBrakeCLI executable
+                handbrake_found = False
                 for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
                     if handbrake_exe in files:
                         shutil.copy2(Path(root) / handbrake_exe, deps_dir / handbrake_exe)
+                        handbrake_found = True
                         break
+                if not handbrake_found:
+                    raise Exception(f"Could not find {handbrake_exe} in downloaded archive")
                 shutil.rmtree(deps_dir / "handbrake_temp")
             else:
                 # For formats like .dmg or .flatpak, just inform user
@@ -748,20 +756,36 @@ def download_dependencies(progress_callback=None):
             if ffmpeg_archive.suffix == ".zip":
                 with zipfile.ZipFile(ffmpeg_archive, 'r') as zip_ref:
                     zip_ref.extractall(deps_dir / "ffmpeg_temp")
-                # Find ffprobe executable
+                # Find ffprobe executable (often in bin subdirectory)
+                ffprobe_found = False
                 for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
                     if ffprobe_exe in files:
                         shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
+                        ffprobe_found = True
+                        # Also copy ffmpeg if present
+                        ffmpeg_exe = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
+                        if ffmpeg_exe in files:
+                            shutil.copy2(Path(root) / ffmpeg_exe, deps_dir / ffmpeg_exe)
                         break
+                if not ffprobe_found:
+                    raise Exception(f"Could not find {ffprobe_exe} in downloaded archive")
                 shutil.rmtree(deps_dir / "ffmpeg_temp")
             elif ffmpeg_archive.suffix in [".tar", ".xz", ".gz"]:
                 with tarfile.open(ffmpeg_archive, 'r:*') as tar_ref:
                     tar_ref.extractall(deps_dir / "ffmpeg_temp")
-                # Find ffprobe executable
+                # Find ffprobe executable (often in bin subdirectory)
+                ffprobe_found = False
                 for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
                     if ffprobe_exe in files:
                         shutil.copy2(Path(root) / ffprobe_exe, deps_dir / ffprobe_exe)
+                        ffprobe_found = True
+                        # Also copy ffmpeg if present
+                        ffmpeg_exe = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
+                        if ffmpeg_exe in files:
+                            shutil.copy2(Path(root) / ffmpeg_exe, deps_dir / ffmpeg_exe)
                         break
+                if not ffprobe_found:
+                    raise Exception(f"Could not find {ffprobe_exe} in downloaded archive")
                 shutil.rmtree(deps_dir / "ffmpeg_temp")
             else:
                 raise Exception(f"ffmpeg format {ffmpeg_archive.suffix} not supported")
