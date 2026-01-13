@@ -833,5 +833,182 @@ class TestCheckDependencies(unittest.TestCase):
         self.assertIn('ffprobe', called_paths)
 
 
+class TestLoggingFunctionality(unittest.TestCase):
+    """Test logging functionality."""
+    
+    def test_setup_logging_default_path(self):
+        """Test that setup_logging creates log file in default temp directory."""
+        import logging
+        
+        # Setup logging without specifying a path
+        log_path = convert_videos.setup_logging()
+        
+        # Verify log file was created in temp directory
+        self.assertTrue(log_path.startswith(tempfile.gettempdir()))
+        self.assertTrue(log_path.endswith('convert_videos.log'))
+        
+        # Verify file exists
+        self.assertTrue(Path(log_path).exists())
+        
+        # Clean up
+        Path(log_path).unlink(missing_ok=True)
+    
+    def test_setup_logging_custom_path(self):
+        """Test that setup_logging uses custom path when provided."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / 'custom_log.log'
+            
+            # Setup logging with custom path
+            result_path = convert_videos.setup_logging(str(log_path))
+            
+            # Verify the correct path was returned
+            self.assertEqual(result_path, str(log_path))
+            
+            # Verify file was created
+            self.assertTrue(log_path.exists())
+    
+    def test_setup_logging_env_variable(self):
+        """Test that setup_logging uses environment variable when set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / 'env_log.log'
+            
+            # Set environment variable
+            import os
+            old_env = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
+            try:
+                os.environ['VIDEO_CONVERTER_LOG_FILE'] = str(log_path)
+                
+                # Setup logging (should use env var)
+                result_path = convert_videos.setup_logging()
+                
+                # Verify the env var path was used
+                self.assertEqual(result_path, str(log_path))
+                
+                # Verify file was created
+                self.assertTrue(log_path.exists())
+            finally:
+                # Restore environment
+                if old_env is None:
+                    os.environ.pop('VIDEO_CONVERTER_LOG_FILE', None)
+                else:
+                    os.environ['VIDEO_CONVERTER_LOG_FILE'] = old_env
+    
+    def test_setup_logging_creates_directory(self):
+        """Test that setup_logging creates parent directories if needed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / 'subdir1' / 'subdir2' / 'test.log'
+            
+            # Setup logging with nested path
+            result_path = convert_videos.setup_logging(str(log_path))
+            
+            # Verify directories and file were created
+            self.assertTrue(log_path.parent.exists())
+            self.assertTrue(log_path.exists())
+            self.assertEqual(result_path, str(log_path))
+    
+    @patch('convert_videos.subprocess.run')
+    def test_run_command_logs_output(self, mock_run):
+        """Test that run_command logs command details."""
+        # Mock subprocess result
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Test output"
+        mock_result.stderr = "Test error"
+        mock_run.return_value = mock_result
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / 'test.log'
+            convert_videos.setup_logging(str(log_path))
+            
+            # Run a command
+            result = convert_videos.run_command(['echo', 'test'])
+            
+            # Verify subprocess was called
+            self.assertTrue(mock_run.called)
+            
+            # Verify result was returned
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "Test output")
+            
+            # Read log file and verify command was logged
+            log_content = log_path.read_text()
+            self.assertIn("Running command:", log_content)
+            self.assertIn("echo test", log_content)
+            self.assertIn("Command stdout:", log_content)
+            self.assertIn("Test output", log_content)
+            self.assertIn("Command exit code: 0", log_content)
+    
+    @patch('convert_videos.subprocess.run')
+    def test_run_command_logs_failure(self, mock_run):
+        """Test that run_command logs command failures."""
+        import subprocess
+        
+        # Mock subprocess failure
+        mock_run.side_effect = subprocess.CalledProcessError(
+            1, ['false'], output="out", stderr="err"
+        )
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / 'test.log'
+            convert_videos.setup_logging(str(log_path))
+            
+            # Run a command that fails
+            with self.assertRaises(subprocess.CalledProcessError):
+                convert_videos.run_command(['false'], check=True)
+            
+            # Read log file and verify error was logged
+            log_content = log_path.read_text()
+            self.assertIn("Running command:", log_content)
+            self.assertIn("Command failed with exit code", log_content)
+
+
+class TestConfigLoggingSettings(unittest.TestCase):
+    """Test loading logging configuration from config file."""
+    
+    def test_load_config_with_logging_settings(self):
+        """Test that logging settings are loaded from config file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / 'config.yaml'
+            log_path = str(Path(tmpdir) / 'test.log')
+            
+            # Create config with logging settings
+            config_data = {
+                'directory': '/test',
+                'logging': {
+                    'log_file': log_path
+                }
+            }
+            
+            with open(config_path, 'w') as f:
+                yaml.dump(config_data, f)
+            
+            # Load config
+            config = convert_videos.load_config(config_path)
+            
+            # Verify logging settings were loaded
+            self.assertIn('logging', config)
+            self.assertEqual(config['logging']['log_file'], log_path)
+    
+    def test_load_config_default_logging_settings(self):
+        """Test that default logging settings are used when not specified."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / 'config.yaml'
+            
+            # Create config without logging settings
+            config_data = {
+                'directory': '/test'
+            }
+            
+            with open(config_path, 'w') as f:
+                yaml.dump(config_data, f)
+            
+            # Load config
+            config = convert_videos.load_config(config_path)
+            
+            # Verify default logging settings were applied
+            self.assertIn('logging', config)
+            self.assertIsNone(config['logging']['log_file'])
+
+
 if __name__ == '__main__':
     unittest.main()
