@@ -838,15 +838,19 @@ class TestCheckDependencies(unittest.TestCase):
 class TestLoggingFunctionality(unittest.TestCase):
     """Test logging functionality."""
     
-    def tearDown(self):
-        """Clean up logging handlers after each test."""
-        # Remove all handlers from root logger to avoid test interference
+    def _close_logging_handlers(self):
+        """Close all logging handlers to release file locks (needed for Windows)."""
         import logging
         root_logger = logging.getLogger()
         handlers = root_logger.handlers[:]
         for handler in handlers:
             handler.close()
             root_logger.removeHandler(handler)
+    
+    def tearDown(self):
+        """Clean up logging handlers after each test."""
+        # Remove all handlers from root logger to avoid test interference
+        self._close_logging_handlers()
     
     def test_setup_logging_default_path(self):
         """Test that setup_logging creates log file in default temp directory."""
@@ -860,6 +864,9 @@ class TestLoggingFunctionality(unittest.TestCase):
             
             # Verify file exists
             self.assertTrue(Path(log_path).exists())
+            
+            # Close handlers before cleanup (required on Windows)
+            self._close_logging_handlers()
             
             # Clean up
             Path(log_path).unlink(missing_ok=True)
@@ -877,6 +884,9 @@ class TestLoggingFunctionality(unittest.TestCase):
             
             # Verify file was created
             self.assertTrue(log_path.exists())
+            
+            # Close handlers before TemporaryDirectory cleanup (required on Windows)
+            self._close_logging_handlers()
     
     def test_setup_logging_env_variable(self):
         """Test that environment variable is handled by main() function logic.
@@ -906,6 +916,9 @@ class TestLoggingFunctionality(unittest.TestCase):
                     os.environ.pop('VIDEO_CONVERTER_LOG_FILE', None)
                 else:
                     os.environ['VIDEO_CONVERTER_LOG_FILE'] = old_env
+                
+                # Close handlers before TemporaryDirectory cleanup (required on Windows)
+                self._close_logging_handlers()
     
     def test_setup_logging_creates_directory(self):
         """Test that setup_logging creates parent directories if needed."""
@@ -919,6 +932,9 @@ class TestLoggingFunctionality(unittest.TestCase):
             self.assertTrue(log_path.parent.exists())
             self.assertTrue(log_path.exists())
             self.assertEqual(result_path, str(log_path))
+            
+            # Close handlers before TemporaryDirectory cleanup (required on Windows)
+            self._close_logging_handlers()
     
     @patch('convert_videos.subprocess.run')
     def test_run_command_logs_output(self, mock_run):
@@ -951,6 +967,9 @@ class TestLoggingFunctionality(unittest.TestCase):
             self.assertIn("Command stdout:", log_content)
             self.assertIn("Test output", log_content)
             self.assertIn("Command exit code: 0", log_content)
+            
+            # Close handlers before TemporaryDirectory cleanup (required on Windows)
+            self._close_logging_handlers()
     
     @patch('convert_videos.subprocess.run')
     def test_run_command_logs_failure(self, mock_run):
@@ -972,6 +991,9 @@ class TestLoggingFunctionality(unittest.TestCase):
             log_content = log_path.read_text()
             self.assertIn("Running command:", log_content)
             self.assertIn("Command failed with exit code", log_content)
+            
+            # Close handlers before TemporaryDirectory cleanup (required on Windows)
+            self._close_logging_handlers()
 
 
 class TestConfigLoggingSettings(unittest.TestCase):
