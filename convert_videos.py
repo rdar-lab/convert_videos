@@ -28,13 +28,18 @@ import shutil
 import tempfile
 
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Get logger for this module
+# Note: Primary logging configuration is done via setup_logging() function called in main()
+# Basic configuration is set here as fallback for early logging or library usage
 logger = logging.getLogger(__name__)
+
+# Set a basic handler for the root logger if none exists (fallback)
+if not logging.root.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
 
 # Constants
