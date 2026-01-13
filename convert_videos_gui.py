@@ -395,6 +395,10 @@ class VideoConverterGUI:
         self.duplicates_tree.bind('<Motion>', self.show_thumbnail_tooltip)
         self.duplicates_tree.bind('<Leave>', self.hide_thumbnail_tooltip)
         
+        # Bind right-click for context menu
+        self.duplicates_tree.bind('<Button-3>', self.show_file_context_menu)  # Right-click
+        self.duplicates_tree.bind('<Button-2>', self.show_file_context_menu)  # Middle-click on macOS
+        
         # Summary label
         self.dup_summary_label = ttk.Label(self.duplicates_tab, text="No duplicates found yet")
         self.dup_summary_label.pack(fill='x', padx=10, pady=5)
@@ -1378,6 +1382,126 @@ class VideoConverterGUI:
             except Exception:
                 pass
             self.thumbnail_tooltip = None
+    
+    def show_file_context_menu(self, event):
+        """Show context menu for file operations."""
+        try:
+            # Get the item under the cursor
+            item = self.duplicates_tree.identify_row(event.y)
+            if not item:
+                return
+            
+            # Check if this is a file (child item, not group)
+            parent = self.duplicates_tree.parent(item)
+            if not parent:  # This is a group, not a file
+                return
+            
+            # Get the file name from the item
+            file_name = self.duplicates_tree.item(item, 'text')
+            
+            # Find the full file path from duplicate results
+            file_path = None
+            for group in self.duplicate_results:
+                for fpath in group.files:
+                    if Path(fpath).name == file_name:
+                        file_path = fpath
+                        break
+                if file_path:
+                    break
+            
+            if not file_path:
+                return
+            
+            # Select the item
+            self.duplicates_tree.selection_set(item)
+            
+            # Create context menu
+            context_menu = tk.Menu(self.root, tearoff=0)
+            context_menu.add_command(
+                label="Delete this file...",
+                command=lambda: self.delete_duplicate_file(item, file_path)
+            )
+            
+            # Show menu at cursor position
+            context_menu.tk_popup(event.x_root, event.y_root)
+            
+        except Exception as e:
+            logger.error(f"Error showing context menu: {repr(e)}")
+        finally:
+            # Clean up menu
+            try:
+                context_menu.grab_release()
+            except Exception:
+                pass
+    
+    def delete_duplicate_file(self, tree_item, file_path):
+        """Delete a duplicate file after confirmation."""
+        try:
+            # Show confirmation dialog with full path
+            result = messagebox.askyesno(
+                "Delete File",
+                f"Are you sure you want to delete this file?\n\n{file_path}\n\n"
+                f"This action cannot be undone!",
+                icon='warning'
+            )
+            
+            if not result:
+                return
+            
+            # Delete the file
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"Deleted file: {file_path}")
+                
+                # Remove from tree view
+                self.duplicates_tree.delete(tree_item)
+                
+                # Update the parent group's file count
+                parent = self.duplicates_tree.parent(tree_item)
+                if parent:
+                    # Get remaining children
+                    children = self.duplicates_tree.get_children(parent)
+                    file_count = len(children)
+                    
+                    # Update parent values
+                    values = self.duplicates_tree.item(parent, 'values')
+                    if values:
+                        self.duplicates_tree.item(parent, values=(values[0], file_count, values[2]))
+                    
+                    # If only one file left in group, it's not a duplicate anymore
+                    if file_count <= 1:
+                        self.duplicates_tree.delete(parent)
+                
+                # Update duplicate_results
+                for group in self.duplicate_results[:]:
+                    if str(file_path) in [str(f) for f in group.files]:
+                        group.files = [f for f in group.files if str(f) != str(file_path)]
+                        # Remove thumbnail entry
+                        if str(file_path) in group.file_thumbnails:
+                            del group.file_thumbnails[str(file_path)]
+                        # Remove group if only one file left
+                        if len(group.files) <= 1:
+                            self.duplicate_results.remove(group)
+                        break
+                
+                # Update summary
+                self.dup_summary_label.config(
+                    text=f"Total Groups: {len(self.duplicate_results)} | "
+                         f"Total Duplicate Files: {sum(len(g.files) for g in self.duplicate_results)}"
+                )
+                
+                messagebox.showinfo("File Deleted", f"Successfully deleted:\n{file_path}")
+            else:
+                messagebox.showerror("File Not Found", f"File does not exist:\n{file_path}")
+                
+        except PermissionError:
+            logger.error(f"Permission denied deleting file: {file_path}")
+            messagebox.showerror("Permission Denied", 
+                               f"Cannot delete file (permission denied):\n{file_path}")
+        except Exception as e:
+            logger.error(f"Error deleting file: {repr(e)}")
+            messagebox.showerror("Delete Error", 
+                               f"Failed to delete file:\n{file_path}\n\nError: {repr(e)}")
             
     @staticmethod
     def format_size(size_bytes):
