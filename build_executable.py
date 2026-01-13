@@ -340,7 +340,7 @@ def create_distribution_package(platform_name):
     exe_extension = '.exe' if platform_name == 'windows' else ''
     
     # Check for both executables
-    cli_exe_name = f'convert_videos{exe_extension}'
+    cli_exe_name = f'convert_videos_cli{exe_extension}'
     gui_exe_name = f'convert_videos_gui{exe_extension}'
     cli_exe_path = dist_dir / cli_exe_name
     gui_exe_path = dist_dir / gui_exe_name
@@ -447,12 +447,12 @@ def main():
     # Create spec files for both CLI and GUI versions
     print("\nCreating PyInstaller spec files...")
     
-    # CLI version with console
+    # CLI version with console (always runs in background mode)
     spec_file_cli = create_spec_file(
         target_platform, 
         binaries_data if not args.skip_download else None,
-        script_name='convert_videos.py',
-        exe_name='convert_videos',
+        script_name='convert_videos_cli.py',
+        exe_name='convert_videos_cli',
         console=True
     )
     
@@ -487,7 +487,7 @@ def main():
     print("\n[SUCCESS] Build completed successfully!")
     exe_extension = '.exe' if target_platform == 'windows' else ''
     print(f"\nExecutable locations:")
-    print(f"  CLI: dist/convert_videos{exe_extension}")
+    print(f"  CLI: dist/convert_videos_cli{exe_extension}")
     if gui_success:
         print(f"  GUI: dist/convert_videos_gui{exe_extension}")
     print(f"Distribution package: dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")

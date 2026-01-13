@@ -150,10 +150,10 @@ Pre-built portable executables are available for Windows, Linux, and macOS from 
      - Linux/macOS: `./convert_videos_gui`
      - Windows: `convert_videos_gui.exe`
    - **CLI Mode (for background/automated tasks):**
-     - Linux/macOS: `./convert_videos [options]`
-     - Windows: `convert_videos.exe [options]`
+     - Linux/macOS: `./convert_videos_cli [options]`
+     - Windows: `convert_videos_cli.exe [options]`
 
-The GUI executable runs without a console window for a clean experience. The CLI executable supports all command-line options and is suitable for scripts and automation.
+The GUI executable runs without a console window for a clean experience. The CLI executable always runs in background mode, supports all command-line options, and is suitable for scripts and automation.
 
 **Building from source:** See [BUILD.md](BUILD.md) for instructions on building your own portable executables.
 

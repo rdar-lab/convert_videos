@@ -389,7 +389,8 @@ def load_config(config_path=None):
         },
         'dependencies': {
             'handbrake': 'HandBrakeCLI',
-            'ffprobe': 'ffprobe'
+            'ffprobe': 'ffprobe',
+            'ffmpeg': 'ffmpeg'
         },
         'logging': {
             'log_file': None  # None means default to temp directory
@@ -469,6 +470,10 @@ def load_config(config_path=None):
     config['dependencies']['ffprobe'] = find_dependency_path(
         'ffprobe',
         config['dependencies'].get('ffprobe')
+    )
+    config['dependencies']['ffmpeg'] = find_dependency_path(
+        'ffmpeg',
+        config['dependencies'].get('ffmpeg')
     )
     
     return config

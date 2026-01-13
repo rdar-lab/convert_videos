@@ -66,7 +66,7 @@ python build_executable.py \
 ## Output
 
 After successful build, you'll find:
-- **CLI Executable**: `dist/convert_videos` (or `convert_videos.exe` on Windows)
+- **CLI Executable**: `dist/convert_videos_cli` (or `convert_videos_cli.exe` on Windows)
 - **GUI Executable**: `dist/convert_videos_gui` (or `convert_videos_gui.exe` on Windows)
 - **Package**: `dist/convert_videos-{platform}.tar.gz` (or `.zip` on Windows)
 
@@ -79,15 +79,16 @@ The package includes:
 
 ### Executable Differences
 
-- **CLI Executable (`convert_videos`)**: 
+- **CLI Executable (`convert_videos_cli`)**: 
   - Runs with a console window
+  - Always runs in background mode (never launches GUI)
   - Suitable for command-line usage, scripts, and background tasks
   - Supports all command-line arguments
   
 - **GUI Executable (`convert_videos_gui`)**:
   - Runs without a console window for a clean experience
   - Launches the graphical user interface
-  - Automatically detects and displays bundled dependencies (HandBrakeCLI, ffprobe)
+  - Automatically detects and displays bundled dependencies (HandBrakeCLI, ffprobe, ffmpeg)
 
 ## GitHub Actions
 
@@ -168,7 +169,7 @@ convert_videos_gui.exe
 
 The GUI executable:
 - Launches without a console window
-- Automatically detects bundled dependencies (HandBrakeCLI, ffprobe)
+- Automatically detects bundled dependencies (HandBrakeCLI, ffprobe, ffmpeg)
 - Shows full paths to bundled dependencies in the Configuration tab
 - Provides visual configuration, progress monitoring, and results
 
@@ -176,19 +177,20 @@ The GUI executable:
 
 ```bash
 # Linux/macOS
-./convert_videos
+./convert_videos_cli
 
 # Windows
-convert_videos.exe
+convert_videos_cli.exe
 
 # With arguments
-./convert_videos /path/to/videos
-./convert_videos --config config.yaml
-./convert_videos --background --loop /path/to/videos
+./convert_videos_cli /path/to/videos
+./convert_videos_cli --config config.yaml
+./convert_videos_cli --loop /path/to/videos
 ```
 
 The CLI executable:
 - Runs with a console window for output
+- Always runs in background mode (never launches GUI)
 - Supports all command-line options
 - Suitable for scripts, Docker, and automated tasks
 - Automatically uses bundled dependencies when available
