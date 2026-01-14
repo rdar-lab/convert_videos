@@ -84,8 +84,6 @@ def find_dependency_path(dependency_name, config_path=None):
     2. If running as PyInstaller bundle, check sys._MEIPASS directory
     3. Use config_path if provided (for PATH resolution), otherwise use dependency_name
     
-    For HandBrakeCLI, also checks for lowercase 'handbrakecli' variant.
-    
     Args:
         dependency_name: Name of the dependency (e.g., 'HandBrakeCLI', 'ffprobe')
         config_path: Optional path from configuration
@@ -104,28 +102,19 @@ def find_dependency_path(dependency_name, config_path=None):
     bundle_dir = get_bundled_path()
     if bundle_dir:
         logger.info(f"Running as PyInstaller bundle, checking for {dependency_name} in {bundle_dir}")
-        
-        # List of names to check (in order)
-        names_to_check = [dependency_name]
-        
-        # For HandBrakeCLI, also check lowercase variant
-        if dependency_name == 'HandBrakeCLI':
-            names_to_check.append('handbrakecli')
-        
         # Look for dependency in bundle directory
-        for name in names_to_check:
-            # Check for .exe extension on Windows
-            if platform.system() == 'Windows':
-                exe_name = name if name.endswith('.exe') else f'{name}.exe'
-            else:
-                exe_name = name
-            
-            bundled_path = bundle_dir / exe_name
-            if bundled_path.exists():
-                logger.info(f"Found bundled dependency: {bundled_path}")
-                return str(bundled_path)
+        # Check for .exe extension on Windows
+        if platform.system() == 'Windows':
+            exe_name = dependency_name if dependency_name.endswith('.exe') else f'{dependency_name}.exe'
+        else:
+            exe_name = dependency_name
         
-        logger.warning(f"Bundled dependency not found (tried: {', '.join(names_to_check)})")
+        bundled_path = bundle_dir / exe_name
+        if bundled_path.exists():
+            logger.info(f"Found bundled dependency: {bundled_path}")
+            return str(bundled_path)
+        else:
+            logger.warning(f"Bundled dependency not found: {bundled_path}")
     else:
         logger.debug(f"Not running as PyInstaller bundle (frozen={getattr(sys, 'frozen', False)})")
     

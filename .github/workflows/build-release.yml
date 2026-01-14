@@ -27,14 +27,9 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
     
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ffmpeg handbrake-cli
-    
     - name: Build executable
       run: |
-        python build_executable.py --platform linux --skip-download
+        python build_executable.py --platform linux
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -63,13 +58,9 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
     
-    - name: Install Chocolatey packages
-      run: |
-        choco install ffmpeg handbrake-cli -y
-    
     - name: Build executable
       run: |
-        python build_executable.py --platform windows --skip-download
+        python build_executable.py --platform windows
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -98,13 +89,9 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
     
-    - name: Install Homebrew packages
-      run: |
-        brew install ffmpeg handbrake
-    
     - name: Build executable
       run: |
-        python build_executable.py --platform macos --skip-download
+        python build_executable.py --platform macos
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4

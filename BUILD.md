@@ -46,24 +46,26 @@ The executable package includes:
 
 ## Build Options
 
-### Skip Downloading External Binaries
+### Automatic Download (Default)
 
-If you want to use system-installed tools instead of downloading them:
+By default, the build script automatically downloads HandBrakeCLI and FFmpeg binaries:
 ```bash
-python build_executable.py --skip-download
+python build_executable.py
 ```
 
-**Note**: When using `--skip-download`, the build script will automatically search for and bundle system-installed binaries (HandBrakeCLI, ffmpeg, ffprobe) found in your PATH. This ensures the standalone executable includes all dependencies even when not downloading them.
+The build will **fail** if downloads are unsuccessful, ensuring fully functional executables.
 
 ### Provide Custom Binary Paths
 
-Bundle specific versions of external tools:
+Optionally bundle specific versions of external tools:
 ```bash
 python build_executable.py \
   --handbrake-path /path/to/HandBrakeCLI \
   --ffmpeg-path /path/to/ffmpeg \
   --ffprobe-path /path/to/ffprobe
 ```
+
+**Note**: Both `--ffmpeg-path` and `--ffprobe-path` must be provided together.
 
 ## Output
 
