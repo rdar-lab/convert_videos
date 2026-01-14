@@ -11,14 +11,12 @@ Note: These tests are resource-intensive and require:
 Run with: pytest test_docker_live.py -v
 """
 
-import os
 import platform
 import subprocess
 import tempfile
 import time
 import unittest
 from pathlib import Path
-import shutil
 import yaml
 
 
