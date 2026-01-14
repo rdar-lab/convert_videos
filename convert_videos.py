@@ -230,30 +230,34 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
             ])
 
         # Run with lower priority on Windows and Linux
-        # Helper function to choose between progress-aware and regular subprocess calls
-        def run_subprocess(cmd_args, **extra_kwargs):
-            if progress_callback or cancellation_check:
-                return subprocess_utils.run_command_with_progress(
-                    cmd_args,
-                    progress_callback=progress_callback,
-                    cancellation_check=cancellation_check,
-                    **extra_kwargs
-                )
-            else:
-                return subprocess_utils.run_command(cmd_args, check=True, **extra_kwargs)
-
         if sys.platform == 'win32':
             # Windows: Use BELOW_NORMAL_PRIORITY_CLASS (0x00004000)
             BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
-            run_subprocess(cmd, creationflags=BELOW_NORMAL_PRIORITY_CLASS)
+            subprocess_utils.run_command(
+                cmd,
+                progress_callback=progress_callback,
+                cancellation_check=cancellation_check,
+                check=True,
+                creationflags=BELOW_NORMAL_PRIORITY_CLASS
+            )
         else:
             # Linux/Unix: Try to use nice if available, otherwise run without it
             try:
                 command_args = ['nice', '-n', '10'] + cmd
-                run_subprocess(command_args)
+                subprocess_utils.run_command(
+                    command_args,
+                    progress_callback=progress_callback,
+                    cancellation_check=cancellation_check,
+                    check=True
+                )
             except FileNotFoundError:
                 # nice not available, run without it
-                run_subprocess(cmd)
+                subprocess_utils.run_command(
+                    cmd,
+                    progress_callback=progress_callback,
+                    cancellation_check=cancellation_check,
+                    check=True
+                )
 
         # Validate and finalize
         return validate_and_finalize(input_path, temp_output, output_path, preserve_original, dependency_config)
