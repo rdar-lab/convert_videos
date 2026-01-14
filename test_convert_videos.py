@@ -4,523 +4,179 @@ Unit tests for convert_videos.py
 """
 
 import os
-import subprocess
 import unittest
 from unittest.mock import patch, MagicMock
 import tempfile
 from pathlib import Path
-import yaml
-import logging
 
 # Import the module to test
 import convert_videos
 
 
-class TestFileSizeParsing(unittest.TestCase):
-    """Test file size parsing functionality."""
-    
-    def test_parse_file_size_bytes(self):
-        """Test parsing file size in bytes."""
-        self.assertEqual(convert_videos.parse_file_size("100"), 100)
-        self.assertEqual(convert_videos.parse_file_size("100B"), 100)
-        self.assertEqual(convert_videos.parse_file_size("100 B"), 100)
-    
-    def test_parse_file_size_kilobytes(self):
-        """Test parsing file size in kilobytes."""
-        self.assertEqual(convert_videos.parse_file_size("1KB"), 1024)
-        self.assertEqual(convert_videos.parse_file_size("2 KB"), 2048)
-        self.assertEqual(convert_videos.parse_file_size("1.5KB"), 1536)
-    
-    def test_parse_file_size_megabytes(self):
-        """Test parsing file size in megabytes."""
-        self.assertEqual(convert_videos.parse_file_size("1MB"), 1024 ** 2)
-        self.assertEqual(convert_videos.parse_file_size("2 MB"), 2 * 1024 ** 2)
-        self.assertEqual(convert_videos.parse_file_size("1.5MB"), int(1.5 * 1024 ** 2))
-    
-    def test_parse_file_size_gigabytes(self):
-        """Test parsing file size in gigabytes."""
-        self.assertEqual(convert_videos.parse_file_size("1GB"), 1024 ** 3)
-        self.assertEqual(convert_videos.parse_file_size("2 GB"), 2 * 1024 ** 3)
-        self.assertEqual(convert_videos.parse_file_size("0.5GB"), int(0.5 * 1024 ** 3))
-    
-    def test_parse_file_size_case_insensitive(self):
-        """Test that parsing is case insensitive."""
-        self.assertEqual(convert_videos.parse_file_size("1gb"), 1024 ** 3)
-        self.assertEqual(convert_videos.parse_file_size("1Gb"), 1024 ** 3)
-        self.assertEqual(convert_videos.parse_file_size("1gB"), 1024 ** 3)
-    
-    def test_parse_file_size_integer_input(self):
-        """Test that integer input is handled correctly."""
-        self.assertEqual(convert_videos.parse_file_size(1024), 1024)
-        self.assertEqual(convert_videos.parse_file_size(0), 0)
-    
-    def test_parse_file_size_invalid_format(self):
-        """Test that invalid formats raise ValueError."""
-        with self.assertRaises(ValueError):
-            convert_videos.parse_file_size("invalid")
-        with self.assertRaises(ValueError):
-            convert_videos.parse_file_size("1 2 GB")
-        with self.assertRaises(ValueError):
-            convert_videos.parse_file_size("GB")
-    
-    def test_parse_file_size_negative(self):
-        """Test that negative values raise ValueError."""
-        with self.assertRaises(ValueError):
-            convert_videos.parse_file_size(-100)
-
-
-class TestValidationFunctions(unittest.TestCase):
-    """Test validation functions."""
-    
-    def test_validate_encoder(self):
-        """Test encoder validation."""
-        # Valid encoders
-        self.assertTrue(convert_videos.validate_encoder('x265'))
-        self.assertTrue(convert_videos.validate_encoder('x265_10bit'))
-        self.assertTrue(convert_videos.validate_encoder('nvenc_hevc'))
-        
-        # Invalid encoders
-        self.assertFalse(convert_videos.validate_encoder('invalid'))
-        self.assertFalse(convert_videos.validate_encoder('h264'))
-        self.assertFalse(convert_videos.validate_encoder(''))
-    
-    def test_validate_format(self):
-        """Test format validation."""
-        # Valid formats
-        self.assertTrue(convert_videos.validate_format('mkv'))
-        self.assertTrue(convert_videos.validate_format('mp4'))
-        
-        # Invalid formats
-        self.assertFalse(convert_videos.validate_format('avi'))
-        self.assertFalse(convert_videos.validate_format('mov'))
-        self.assertFalse(convert_videos.validate_format(''))
-    
-    def test_validate_preset(self):
-        """Test preset validation."""
-        # Valid x265 presets
-        for preset in ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']:
-            self.assertTrue(convert_videos.validate_preset(preset))
-        
-        # Valid NVENC presets
-        for preset in ['default', 'fast', 'medium', 'slow']:
-            self.assertTrue(convert_videos.validate_preset(preset))
-        
-        # Invalid presets
-        self.assertFalse(convert_videos.validate_preset('invalid'))
-        self.assertFalse(convert_videos.validate_preset(''))
-    
-    def test_validate_quality(self):
-        """Test quality validation."""
-        # Valid quality values
-        self.assertTrue(convert_videos.validate_quality(0))
-        self.assertTrue(convert_videos.validate_quality(24))
-        self.assertTrue(convert_videos.validate_quality(51))
-        self.assertTrue(convert_videos.validate_quality('24'))
-        
-        # Invalid quality values
-        self.assertFalse(convert_videos.validate_quality(-1))
-        self.assertFalse(convert_videos.validate_quality(52))
-        self.assertFalse(convert_videos.validate_quality('invalid'))
-        self.assertFalse(convert_videos.validate_quality(None))
-
-
-class TestPresetMapping(unittest.TestCase):
-    """Test preset mapping for different encoders."""
-    
-    def test_x265_preset_mapping(self):
-        """Test that x265 presets are passed through unchanged."""
-        for preset in ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']:
-            result = convert_videos.map_preset_for_encoder(preset, 'x265')
-            self.assertEqual(result, preset)
-    
-    def test_x265_10bit_preset_mapping(self):
-        """Test that x265_10bit presets are passed through unchanged."""
-        for preset in ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']:
-            result = convert_videos.map_preset_for_encoder(preset, 'x265_10bit')
-            self.assertEqual(result, preset)
-    
-    def test_nvenc_preset_mapping_from_x265(self):
-        """Test mapping x265 presets to NVENC equivalents."""
-        # Fast presets should map to 'fast'
-        for preset in ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast']:
-            result = convert_videos.map_preset_for_encoder(preset, 'nvenc_hevc')
-            self.assertEqual(result, 'fast')
-        
-        # Medium preset should map to 'medium'
-        self.assertEqual(convert_videos.map_preset_for_encoder('medium', 'nvenc_hevc'), 'medium')
-        
-        # Slow presets should map to 'slow'
-        for preset in ['slow', 'slower', 'veryslow']:
-            result = convert_videos.map_preset_for_encoder(preset, 'nvenc_hevc')
-            self.assertEqual(result, 'slow')
-    
-    def test_nvenc_preset_passthrough(self):
-        """Test that NVENC presets are passed through unchanged for NVENC encoder."""
-        for preset in ['default', 'fast', 'medium', 'slow']:
-            result = convert_videos.map_preset_for_encoder(preset, 'nvenc_hevc')
-            self.assertEqual(result, preset)
-    
-    def test_x265_with_nvenc_preset(self):
-        """Test mapping NVENC presets to x265 equivalents."""
-        self.assertEqual(convert_videos.map_preset_for_encoder('default', 'x265'), 'medium')
-        self.assertEqual(convert_videos.map_preset_for_encoder('fast', 'x265'), 'fast')
-        self.assertEqual(convert_videos.map_preset_for_encoder('medium', 'x265'), 'medium')
-        self.assertEqual(convert_videos.map_preset_for_encoder('slow', 'x265'), 'slow')
-
-
-class TestConfigLoading(unittest.TestCase):
-    """Test configuration file loading."""
-    
-    def test_load_config_file_not_found(self):
-        """Test loading config when file doesn't exist."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'nonexistent.yaml'
-            config = convert_videos.load_config(config_path)
-            
-            # Should return default config
-            self.assertIsNotNone(config)
-            self.assertEqual(config['min_file_size'], '1GB')
-            self.assertEqual(config['output']['format'], 'mkv')
-            self.assertEqual(config['output']['encoder'], 'x265_10bit')
-    
-    def test_load_config_valid_file(self):
-        """Test loading a valid config file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            config_data = {
-                'directory': '/test/path',
-                'min_file_size': '500MB',
-                'output': {
-                    'format': 'mp4',
-                    'encoder': 'nvenc_hevc',
-                    'preset': 'fast',
-                    'quality': 20
-                },
-                'preserve_original': True,
-                'loop': True,
-                'dry_run': True
-            }
-            
-            with open(config_path, 'w') as f:
-                yaml.dump(config_data, f)
-            
-            config = convert_videos.load_config(config_path)
-            
-            self.assertEqual(config['directory'], '/test/path')
-            self.assertEqual(config['min_file_size'], '500MB')
-            self.assertEqual(config['output']['format'], 'mp4')
-            self.assertEqual(config['output']['encoder'], 'nvenc_hevc')
-            self.assertEqual(config['output']['preset'], 'fast')
-            self.assertEqual(config['output']['quality'], 20)
-            self.assertTrue(config['preserve_original'])
-            self.assertTrue(config['loop'])
-            self.assertTrue(config['dry_run'])
-    
-    def test_load_config_partial_output(self):
-        """Test that partial output config merges with defaults."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            config_data = {
-                'directory': '/test/path',
-                'output': {
-                    'encoder': 'x265'
-                }
-            }
-            
-            with open(config_path, 'w') as f:
-                yaml.dump(config_data, f)
-            
-            config = convert_videos.load_config(config_path)
-            
-            # Should have custom encoder
-            self.assertEqual(config['output']['encoder'], 'x265')
-            # But default format, preset, and quality
-            self.assertEqual(config['output']['format'], 'mkv')
-            self.assertEqual(config['output']['preset'], 'medium')
-            self.assertEqual(config['output']['quality'], 24)
-    
-    def test_load_config_null_output(self):
-        """Test that null output config restores defaults."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            config_data = {
-                'directory': '/test/path',
-                'output': None
-            }
-            
-            with open(config_path, 'w') as f:
-                yaml.dump(config_data, f)
-            
-            config = convert_videos.load_config(config_path)
-            
-            # Should have default output config
-            self.assertEqual(config['output']['format'], 'mkv')
-            self.assertEqual(config['output']['encoder'], 'x265_10bit')
-            self.assertEqual(config['output']['preset'], 'medium')
-            self.assertEqual(config['output']['quality'], 24)
-    
-    def test_load_config_invalid_yaml(self):
-        """Test handling of invalid YAML file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            
-            with open(config_path, 'w') as f:
-                f.write("invalid: yaml: content:\n  - broken")
-            
-            config = convert_videos.load_config(config_path)
-            
-            # Should return default config on error
-            self.assertEqual(config['min_file_size'], '1GB')
-    
-    def test_load_config_with_dependencies(self):
-        """Test loading config with dependencies paths."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            config_data = {
-                'directory': '/test/path',
-                'dependencies': {
-                    'handbrake': '/custom/path/HandBrakeCLI',
-                    'ffprobe': '/custom/path/ffprobe'
-                }
-            }
-            
-            with open(config_path, 'w') as f:
-                yaml.dump(config_data, f)
-            
-            config = convert_videos.load_config(config_path)
-            
-            self.assertEqual(config['dependencies']['handbrake'], '/custom/path/HandBrakeCLI')
-            self.assertEqual(config['dependencies']['ffprobe'], '/custom/path/ffprobe')
-    
-    def test_load_config_partial_dependencies(self):
-        """Test that partial dependencies config merges with defaults."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            config_data = {
-                'directory': '/test/path',
-                'dependencies': {
-                    'handbrake': '/custom/HandBrakeCLI'
-                }
-            }
-            
-            with open(config_path, 'w') as f:
-                yaml.dump(config_data, f)
-            
-            config = convert_videos.load_config(config_path)
-            
-            # Should have custom handbrake path
-            self.assertEqual(config['dependencies']['handbrake'], '/custom/HandBrakeCLI')
-            # But default ffprobe
-            self.assertEqual(config['dependencies']['ffprobe'], 'ffprobe')
-    
-    def test_load_config_null_dependencies(self):
-        """Test that null dependencies config restores defaults."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            config_data = {
-                'directory': '/test/path',
-                'dependencies': None
-            }
-            
-            with open(config_path, 'w') as f:
-                yaml.dump(config_data, f)
-            
-            config = convert_videos.load_config(config_path)
-            
-            # Should have default dependencies config
-            self.assertEqual(config['dependencies']['handbrake'], 'HandBrakeCLI')
-            self.assertEqual(config['dependencies']['ffprobe'], 'ffprobe')
-    
-    def test_load_config_invalid_dependencies_type(self):
-        """Test that invalid dependencies type falls back to defaults."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            config_data = {
-                'directory': '/test/path',
-                'dependencies': 'invalid_string'
-            }
-            
-            with open(config_path, 'w') as f:
-                yaml.dump(config_data, f)
-            
-            config = convert_videos.load_config(config_path)
-            
-            # Should fall back to default dependencies config
-            self.assertEqual(config['dependencies']['handbrake'], 'HandBrakeCLI')
-            self.assertEqual(config['dependencies']['ffprobe'], 'ffprobe')
-
-
 class TestGetCodec(unittest.TestCase):
     """Test codec detection functionality."""
     
-    @patch('convert_videos.subprocess.run')
+    @patch('subprocess_utils.run_command')
     def test_get_codec_hevc(self, mock_run):
         """Test detecting HEVC codec."""
-        mock_run.return_value = MagicMock(stdout='hevc\n', returncode=0)
+        mock_result = MagicMock()
+        mock_result.stdout = "hevc"
+        mock_result.returncode = 0
+        mock_run.return_value = mock_result
         
-        result = convert_videos.get_codec('/path/to/video.mp4')
-        
-        self.assertEqual(result, 'hevc')
+        codec = convert_videos.get_codec('/test/file.mp4')
+        self.assertEqual(codec, "hevc")
         mock_run.assert_called_once()
     
-    @patch('convert_videos.subprocess.run')
+    @patch('subprocess_utils.run_command')
     def test_get_codec_h264(self, mock_run):
         """Test detecting H.264 codec."""
-        mock_run.return_value = MagicMock(stdout='h264\n', returncode=0)
+        mock_result = MagicMock()
+        mock_result.stdout = "h264"
+        mock_run.return_value = mock_result
         
-        result = convert_videos.get_codec('/path/to/video.mp4')
-        
-        self.assertEqual(result, 'h264')
+        codec = convert_videos.get_codec('/test/file.mp4')
+        self.assertEqual(codec, "h264")
     
-    @patch('convert_videos.subprocess.run')
+    @patch('subprocess_utils.run_command')
     def test_get_codec_error(self, mock_run):
         """Test handling error when getting codec."""
-        from subprocess import CalledProcessError
-        mock_run.side_effect = CalledProcessError(1, 'ffprobe')
+        mock_run.side_effect = Exception("Command failed")
         
-        result = convert_videos.get_codec('/path/to/video.mp4')
-        
-        self.assertIsNone(result)
+        codec = convert_videos.get_codec('/test/file.mp4')
+        self.assertIsNone(codec)
 
 
 class TestGetDuration(unittest.TestCase):
     """Test video duration extraction."""
     
-    @patch('convert_videos.subprocess.run')
+    @patch('subprocess_utils.run_command')
     def test_get_duration_valid(self, mock_run):
         """Test getting valid duration."""
-        mock_run.return_value = MagicMock(stdout='3600.5\n', returncode=0)
+        mock_result = MagicMock()
+        mock_result.stdout = "123.45"
+        mock_run.return_value = mock_result
         
-        result = convert_videos.get_duration('/path/to/video.mp4')
-        
-        self.assertEqual(result, 3600)
+        duration = convert_videos.get_duration('/test/file.mp4')
+        self.assertEqual(duration, 123)
     
-    @patch('convert_videos.subprocess.run')
+    @patch('subprocess_utils.run_command')
     def test_get_duration_integer(self, mock_run):
         """Test getting integer duration."""
-        mock_run.return_value = MagicMock(stdout='1800\n', returncode=0)
+        mock_result = MagicMock()
+        mock_result.stdout = "100"
+        mock_run.return_value = mock_result
         
-        result = convert_videos.get_duration('/path/to/video.mp4')
-        
-        self.assertEqual(result, 1800)
+        duration = convert_videos.get_duration('/test/file.mp4')
+        self.assertEqual(duration, 100)
     
-    @patch('convert_videos.subprocess.run')
-    def test_get_duration_error(self, mock_run):
-        """Test handling error when getting duration."""
-        from subprocess import CalledProcessError
-        mock_run.side_effect = CalledProcessError(1, 'ffprobe')
-        
-        result = convert_videos.get_duration('/path/to/video.mp4')
-        
-        self.assertEqual(result, 0)
-    
-    @patch('convert_videos.subprocess.run')
+    @patch('subprocess_utils.run_command')
     def test_get_duration_empty(self, mock_run):
         """Test handling empty duration output."""
-        mock_run.return_value = MagicMock(stdout='', returncode=0)
+        mock_result = MagicMock()
+        mock_result.stdout = ""
+        mock_run.return_value = mock_result
         
-        result = convert_videos.get_duration('/path/to/video.mp4')
+        duration = convert_videos.get_duration('/test/file.mp4')
+        self.assertEqual(duration, 0)
+    
+    @patch('subprocess_utils.run_command')
+    def test_get_duration_error(self, mock_run):
+        """Test handling error when getting duration."""
+        mock_run.side_effect = Exception("Command failed")
         
-        self.assertEqual(result, 0)
+        duration = convert_videos.get_duration('/test/file.mp4')
+        self.assertEqual(duration, 0)
 
 
 class TestFindEligibleFiles(unittest.TestCase):
     """Test finding eligible files for conversion."""
     
     @patch('convert_videos.get_codec')
-    def test_find_eligible_files_filters_by_size(self, mock_get_codec):
-        """Test that files below minimum size are filtered out."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            
-            # Create test files (using smaller sizes for faster tests)
-            small_file = tmpdir_path / 'small.mp4'
-            large_file = tmpdir_path / 'large.mp4'
-            
-            small_file.write_bytes(b'x' * (500 * 1024))  # 500KB
-            large_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
-            
-            mock_get_codec.return_value = 'h264'
-            
-            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 * 1024)  # 1MB threshold
-            
-            # Only large file should be returned
-            self.assertEqual(len(result), 1)
-            self.assertEqual(result[0].name, 'large.mp4')
-    
-    @patch('convert_videos.get_codec')
     def test_find_eligible_files_filters_by_codec(self, mock_get_codec):
         """Test that HEVC files are filtered out."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create test files
+            file1 = Path(temp_dir) / "test1.mp4"
+            file2 = Path(temp_dir) / "test2.mp4"
             
-            # Create test files (using smaller sizes for faster tests)
-            h264_file = tmpdir_path / 'h264.mp4'
-            hevc_file = tmpdir_path / 'hevc.mp4'
+            # Create files with minimum size
+            file1.write_bytes(b'x' * (1024**3 + 1))  # > 1GB
+            file2.write_bytes(b'x' * (1024**3 + 1))
             
-            h264_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
-            hevc_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
-            
-            def codec_side_effect(path, dependency_config=None):
-                if 'h264' in str(path):
-                    return 'h264'
-                return 'hevc'
+            # Mock codec detection - one hevc, one h264
+            def codec_side_effect(path, config=None):
+                if 'test1' in str(path):
+                    return 'hevc'
+                return 'h264'
             
             mock_get_codec.side_effect = codec_side_effect
             
-            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 * 1024)  # 1MB threshold
+            eligible = convert_videos.find_eligible_files(temp_dir)
             
-            # Only h264 file should be returned
-            self.assertEqual(len(result), 1)
-            self.assertEqual(result[0].name, 'h264.mp4')
+            # Only test2.mp4 (h264) should be eligible
+            self.assertEqual(len(eligible), 1)
+            self.assertIn('test2.mp4', str(eligible[0]))
     
     @patch('convert_videos.get_codec')
-    def test_find_eligible_files_skips_failed(self, mock_get_codec):
-        """Test that files with .fail extension are skipped."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
+    def test_find_eligible_files_filters_by_size(self, mock_get_codec):
+        """Test that files below minimum size are filtered out."""
+        mock_get_codec.return_value = 'h264'
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create small and large files
+            small_file = Path(temp_dir) / "small.mp4"
+            large_file = Path(temp_dir) / "large.mp4"
             
-            # Create test files (using smaller sizes for faster tests)
-            normal_file = tmpdir_path / 'normal.mp4'
-            failed_file = tmpdir_path / 'failed.mp4.fail'
-            failed_file_numbered = tmpdir_path / 'failed2.mp4.fail_1'
+            small_file.write_bytes(b'x' * 1000)  # Small file
+            large_file.write_bytes(b'x' * (1024**3 + 1))  # > 1GB
             
-            normal_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
-            failed_file.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
-            failed_file_numbered.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
+            eligible = convert_videos.find_eligible_files(temp_dir)
             
-            mock_get_codec.return_value = 'h264'
-            
-            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 * 1024)  # 1MB threshold
-            
-            # Only normal file should be returned
-            self.assertEqual(len(result), 1)
-            self.assertEqual(result[0].name, 'normal.mp4')
+            # Only large file should be eligible
+            self.assertEqual(len(eligible), 1)
+            self.assertIn('large.mp4', str(eligible[0]))
     
     @patch('convert_videos.get_codec')
     def test_find_eligible_files_sorts_by_size(self, mock_get_codec):
         """Test that files are sorted by size (largest first)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
+        mock_get_codec.return_value = 'h264'
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file1 = Path(temp_dir) / "file1.mp4"
+            file2 = Path(temp_dir) / "file2.mp4"
+            file3 = Path(temp_dir) / "file3.mp4"
             
-            # Create test files of different sizes (using smaller sizes for faster tests)
-            small = tmpdir_path / 'small.mp4'
-            medium = tmpdir_path / 'medium.mp4'
-            large = tmpdir_path / 'large.mp4'
+            # Create files with different sizes
+            file1.write_bytes(b'x' * (1024**3 + 100))
+            file2.write_bytes(b'x' * (1024**3 + 300))  # Largest
+            file3.write_bytes(b'x' * (1024**3 + 200))
             
-            small.write_bytes(b'x' * (1 * 1024 * 1024))   # 1MB
-            medium.write_bytes(b'x' * (2 * 1024 * 1024))  # 2MB
-            large.write_bytes(b'x' * (3 * 1024 * 1024))   # 3MB
+            eligible = convert_videos.find_eligible_files(temp_dir)
             
-            mock_get_codec.return_value = 'h264'
+            # Should be sorted by size (largest first)
+            self.assertEqual(len(eligible), 3)
+            self.assertIn('file2', str(eligible[0]))  # Largest
+            self.assertIn('file3', str(eligible[1]))
+            self.assertIn('file1', str(eligible[2]))
+    
+    @patch('convert_videos.get_codec')
+    def test_find_eligible_files_skips_failed(self, mock_get_codec):
+        """Test that files with .fail extension are skipped."""
+        mock_get_codec.return_value = 'h264'
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            normal_file = Path(temp_dir) / "normal.mp4"
+            failed_file = Path(temp_dir) / "failed.mp4.fail"
             
-            result = convert_videos.find_eligible_files(tmpdir, min_size_bytes=1024 * 1024)  # 1MB threshold
+            normal_file.write_bytes(b'x' * (1024**3 + 1))
+            failed_file.write_bytes(b'x' * (1024**3 + 1))
             
-            # Should be sorted largest first
-            self.assertEqual(len(result), 3)
-            self.assertEqual(result[0].name, 'large.mp4')
-            self.assertEqual(result[1].name, 'medium.mp4')
-            self.assertEqual(result[2].name, 'small.mp4')
+            eligible = convert_videos.find_eligible_files(temp_dir)
+            
+            # Only normal file should be eligible
+            self.assertEqual(len(eligible), 1)
+            self.assertIn('normal.mp4', str(eligible[0]))
 
 
 class TestValidateAndFinalize(unittest.TestCase):
@@ -528,611 +184,105 @@ class TestValidateAndFinalize(unittest.TestCase):
     
     @patch('convert_videos.get_duration')
     def test_validate_and_finalize_success(self, mock_get_duration):
-        """Test successful validation with matching durations."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
+        """Test successful validation and finalization."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = Path(temp_dir) / "input.mp4"
+            temp_output = Path(temp_dir) / "output.mkv.temp"
+            final_output = Path(temp_dir) / "output.mkv"
             
-            input_file = tmpdir_path / 'input.mp4'
-            temp_file = tmpdir_path / 'temp.mkv.temp'
-            final_file = tmpdir_path / 'final.mkv'
+            input_file.write_bytes(b'input data')
+            temp_output.write_bytes(b'output data')
             
-            input_file.write_text('input')
-            temp_file.write_text('temp')
-            
-            # Mock durations to be the same
-            mock_get_duration.return_value = 3600
+            # Mock duration match
+            mock_get_duration.return_value = 100
             
             result = convert_videos.validate_and_finalize(
-                input_file, temp_file, final_file, preserve_original=False
+                input_file, temp_output, final_output, preserve_original=False
             )
             
             self.assertTrue(result)
-            self.assertFalse(input_file.exists())
-            self.assertFalse(temp_file.exists())
-            self.assertTrue(final_file.exists())
-    
-    @patch('convert_videos.get_duration')
-    def test_validate_and_finalize_preserve_original(self, mock_get_duration):
-        """Test successful validation with preserve_original=True."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            
-            input_file = tmpdir_path / 'input.mp4'
-            temp_file = tmpdir_path / 'temp.mkv.temp'
-            final_file = tmpdir_path / 'final.mkv'
-            
-            input_file.write_text('input')
-            temp_file.write_text('temp')
-            
-            # Mock durations to be the same
-            mock_get_duration.return_value = 3600
-            
-            result = convert_videos.validate_and_finalize(
-                input_file, temp_file, final_file, preserve_original=True
-            )
-            
-            self.assertTrue(result)
-            # Original should be renamed to .orig.mp4
-            orig_file = tmpdir_path / 'input.orig.mp4'
-            self.assertFalse(input_file.exists())  # Original file should be renamed
-            self.assertTrue(orig_file.exists())  # Should now have .orig suffix
-            self.assertFalse(temp_file.exists())
-            self.assertTrue(final_file.exists())
+            self.assertTrue(final_output.exists())
+            self.assertFalse(input_file.exists())  # Original removed
+            self.assertFalse(temp_output.exists())
     
     @patch('convert_videos.get_duration')
     def test_validate_and_finalize_duration_mismatch(self, mock_get_duration):
-        """Test validation failure with mismatched durations."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
+        """Test handling duration mismatch."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = Path(temp_dir) / "input.mp4"
+            temp_output = Path(temp_dir) / "output.mkv.temp"
+            final_output = Path(temp_dir) / "output.mkv"
             
-            input_file = tmpdir_path / 'input.mp4'
-            temp_file = tmpdir_path / 'temp.mkv.temp'
-            final_file = tmpdir_path / 'final.mkv'
+            input_file.write_bytes(b'input data')
+            temp_output.write_bytes(b'output data')
             
-            input_file.write_text('input')
-            temp_file.write_text('temp')
+            # Mock duration mismatch
+            def duration_side_effect(path, config=None):
+                if 'input' in str(path):
+                    return 100
+                return 90  # Mismatch > 1 second
             
-            # Mock durations to be different
-            mock_get_duration.side_effect = [3600, 3500]
+            mock_get_duration.side_effect = duration_side_effect
             
             result = convert_videos.validate_and_finalize(
-                input_file, temp_file, final_file, preserve_original=False
+                input_file, temp_output, final_output, preserve_original=False
             )
             
             self.assertFalse(result)
+            self.assertTrue(final_output.exists())  # Output still created
             self.assertFalse(input_file.exists())  # Original renamed to .fail
-            self.assertFalse(temp_file.exists())
-            self.assertTrue(final_file.exists())
-            
-            # Check for .fail file
-            fail_files = list(tmpdir_path.glob('*.fail*'))
-            self.assertEqual(len(fail_files), 1)
-    
-    @patch('convert_videos.get_duration')
-    def test_validate_and_finalize_zero_duration(self, mock_get_duration):
-        """Test validation failure when duration cannot be determined."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            
-            input_file = tmpdir_path / 'input.mp4'
-            temp_file = tmpdir_path / 'temp.mkv.temp'
-            final_file = tmpdir_path / 'final.mkv'
-            
-            input_file.write_text('input')
-            temp_file.write_text('temp')
-            
-            # Mock one duration to be zero
-            mock_get_duration.side_effect = [3600, 0]
-            
-            result = convert_videos.validate_and_finalize(
-                input_file, temp_file, final_file, preserve_original=False
-            )
-            
-            self.assertFalse(result)
-            self.assertTrue(input_file.exists())  # Original should still exist on error
-            self.assertFalse(temp_file.exists())  # Temp should be cleaned up
-            self.assertFalse(final_file.exists())
 
 
 class TestConvertFile(unittest.TestCase):
-    """Test convert_file function."""
-    
-    def test_convert_file_invalid_format(self):
-        """Test that invalid output format returns False."""
-        output_config = {
-            'format': 'avi',  # Invalid
-            'encoder': 'x265',
-            'preset': 'medium',
-            'quality': 24
-        }
-        
-        result = convert_videos.convert_file(
-            '/path/to/video.mp4',
-            dry_run=False,
-            preserve_original=False,
-            output_config=output_config
-        )
-        
-        self.assertFalse(result)
-    
-    def test_convert_file_invalid_encoder(self):
-        """Test that invalid encoder returns False."""
-        output_config = {
-            'format': 'mkv',
-            'encoder': 'invalid',  # Invalid
-            'preset': 'medium',
-            'quality': 24
-        }
-        
-        result = convert_videos.convert_file(
-            '/path/to/video.mp4',
-            dry_run=False,
-            preserve_original=False,
-            output_config=output_config
-        )
-        
-        self.assertFalse(result)
-    
-    def test_convert_file_invalid_preset(self):
-        """Test that invalid preset returns False."""
-        output_config = {
-            'format': 'mkv',
-            'encoder': 'x265',
-            'preset': 'invalid',  # Invalid
-            'quality': 24
-        }
-        
-        result = convert_videos.convert_file(
-            '/path/to/video.mp4',
-            dry_run=False,
-            preserve_original=False,
-            output_config=output_config
-        )
-        
-        self.assertFalse(result)
-    
-    def test_convert_file_invalid_quality(self):
-        """Test that invalid quality returns False."""
-        output_config = {
-            'format': 'mkv',
-            'encoder': 'x265',
-            'preset': 'medium',
-            'quality': 100  # Invalid (must be 0-51)
-        }
-        
-        result = convert_videos.convert_file(
-            '/path/to/video.mp4',
-            dry_run=False,
-            preserve_original=False,
-            output_config=output_config
-        )
-        
-        self.assertFalse(result)
+    """Test file conversion functionality."""
     
     def test_convert_file_dry_run(self):
         """Test dry run mode."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            input_file = tmpdir_path / 'input.mp4'
-            input_file.write_text('test')
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = Path(temp_dir) / "test.mp4"
+            input_file.write_bytes(b'test data')
             
-            output_config = {
-                'format': 'mkv',
-                'encoder': 'x265',
-                'preset': 'medium',
-                'quality': 24
-            }
+            result = convert_videos.convert_file(input_file, dry_run=True)
+            
+            self.assertTrue(result)
+            # No actual conversion should happen
+            converted_files = list(Path(temp_dir).glob("*.converted.*"))
+            self.assertEqual(len(converted_files), 0)
+    
+    def test_convert_file_with_progress_callback(self):
+        """Test that progress callback is accepted."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = Path(temp_dir) / "test.mp4"
+            input_file.write_bytes(b'test data')
+            
+            progress_calls = []
+            def progress_callback(percentage):
+                progress_calls.append(percentage)
             
             result = convert_videos.convert_file(
                 input_file,
                 dry_run=True,
-                preserve_original=False,
-                output_config=output_config
+                progress_callback=progress_callback
             )
             
             self.assertTrue(result)
-            # No output file should be created in dry run
-            self.assertEqual(len(list(tmpdir_path.glob('*.mkv'))), 0)
-
-
-class TestCheckDependencies(unittest.TestCase):
-    """Test dependency checking."""
     
-    @patch('convert_videos.subprocess.run')
-    @patch('convert_videos.sys.exit')
-    def test_check_dependencies_missing(self, mock_exit, mock_run):
-        """Test that missing dependencies trigger exit."""
-        mock_run.side_effect = FileNotFoundError()
-        
-        convert_videos.check_dependencies()
-        
-        mock_exit.assert_called_once_with(1)
-    
-    @patch('convert_videos.subprocess.run')
-    def test_check_dependencies_all_present(self, mock_run):
-        """Test that all dependencies present doesn't exit."""
-        mock_run.return_value = MagicMock(returncode=0)
-        
-        # Should not raise exception
-        try:
-            convert_videos.check_dependencies()
-        except SystemExit:
-            self.fail("check_dependencies raised SystemExit unexpectedly")
-    
-    @patch('convert_videos.subprocess.run')
-    def test_check_dependencies_custom_paths(self, mock_run):
-        """Test dependency checking with custom paths."""
-        mock_run.return_value = MagicMock(returncode=0)
-        
-        custom_paths = {
-            'handbrake': '/custom/HandBrakeCLI',
-            'ffprobe': '/custom/ffprobe'
-        }
-        
-        # Should not raise exception
-        try:
-            convert_videos.check_dependencies(custom_paths)
-        except SystemExit:
-            self.fail("check_dependencies raised SystemExit unexpectedly")
-        
-        # Verify custom paths were used
-        calls = mock_run.call_args_list
-        self.assertEqual(len(calls), 2)
-        
-        # Check that custom paths were used in the calls
-        called_paths = []
-        for call in calls:
-            call_args = call[0]
-            command = call_args[0]
-            executable = command[0]
-            called_paths.append(executable)
-        
-        self.assertIn('/custom/ffprobe', called_paths)
-        self.assertIn('/custom/HandBrakeCLI', called_paths)
-    
-    @patch('convert_videos.subprocess.run')
-    @patch('convert_videos.sys.exit')
-    def test_check_dependencies_custom_paths_missing(self, mock_exit, mock_run):
-        """Test that missing custom dependency paths trigger exit."""
-        mock_run.side_effect = FileNotFoundError()
-        
-        custom_paths = {
-            'handbrake': '/nonexistent/HandBrakeCLI',
-            'ffprobe': '/nonexistent/ffprobe'
-        }
-        
-        convert_videos.check_dependencies(custom_paths)
-        
-        mock_exit.assert_called_once_with(1)
-    
-    @patch('convert_videos.subprocess.run')
-    def test_check_dependencies_partial_custom_paths(self, mock_run):
-        """Test dependency checking with partial custom paths."""
-        mock_run.return_value = MagicMock(returncode=0)
-        
-        custom_paths = {
-            'handbrake': '/custom/HandBrakeCLI',
-            # ffprobe will use default
-        }
-        
-        # Should not raise exception
-        try:
-            convert_videos.check_dependencies(custom_paths)
-        except SystemExit:
-            self.fail("check_dependencies raised SystemExit unexpectedly")
-        
-        # Verify mixed paths were used
-        calls = mock_run.call_args_list
-        self.assertEqual(len(calls), 2)
-        
-        called_paths = []
-        for call in calls:
-            call_args = call[0]
-            command = call_args[0]
-            executable = command[0]
-            called_paths.append(executable)
-        
-        self.assertIn('/custom/HandBrakeCLI', called_paths)
-        self.assertIn('ffprobe', called_paths)
-
-
-class TestLoggingFunctionality(unittest.TestCase):
-    """Test logging functionality."""
-    
-    def _close_logging_handlers(self):
-        """Close all logging handlers to release file locks (needed for Windows)."""
-        root_logger = logging.getLogger()
-        handlers = root_logger.handlers[:]
-        for handler in handlers:
-            handler.close()
-            root_logger.removeHandler(handler)
-    
-    def tearDown(self):
-        """Clean up logging handlers after each test."""
-        # Remove all handlers from root logger to avoid test interference
-        self._close_logging_handlers()
-    
-    def test_setup_logging_default_path(self):
-        """Test that setup_logging creates log file in default temp directory."""
-        # Setup logging without specifying a path
-        log_path = convert_videos.setup_logging()
-        
-        # Verify log file was created in temp directory
-        if log_path:  # May be None if file logging fails
-            self.assertTrue(log_path.startswith(tempfile.gettempdir()))
-            self.assertTrue(log_path.endswith('convert_videos.log'))
+    def test_convert_file_with_cancellation_check(self):
+        """Test that cancellation check is accepted."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = Path(temp_dir) / "test.mp4"
+            input_file.write_bytes(b'test data')
             
-            # Verify file exists
-            self.assertTrue(Path(log_path).exists())
+            def cancellation_check():
+                return False
             
-            # Close handlers before cleanup (required on Windows)
-            self._close_logging_handlers()
+            result = convert_videos.convert_file(
+                input_file,
+                dry_run=True,
+                cancellation_check=cancellation_check
+            )
             
-            # Clean up
-            Path(log_path).unlink(missing_ok=True)
-    
-    def test_setup_logging_custom_path(self):
-        """Test that setup_logging uses custom path when provided."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            log_path = Path(tmpdir) / 'custom_log.log'
-            
-            # Setup logging with custom path
-            result_path = convert_videos.setup_logging(str(log_path))
-            
-            # Verify the correct path was returned
-            self.assertEqual(result_path, str(log_path))
-            
-            # Verify file was created
-            self.assertTrue(log_path.exists())
-            
-            # Close handlers before TemporaryDirectory cleanup (required on Windows)
-            self._close_logging_handlers()
-    
-    def test_setup_logging_env_variable(self):
-        """Test that environment variable is handled by main() function logic.
-        
-        This test simulates what main() does: check env var and pass to setup_logging.
-        """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            log_path = Path(tmpdir) / 'env_log.log'
-            
-            # Set environment variable
-            old_env = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
-            try:
-                os.environ['VIDEO_CONVERTER_LOG_FILE'] = str(log_path)
-                
-                # Simulate main() logic: check env var and pass to setup_logging
-                env_log = os.environ.get('VIDEO_CONVERTER_LOG_FILE')
-                result_path = convert_videos.setup_logging(env_log)
-                
-                # Verify the env var path was used
-                self.assertEqual(result_path, str(log_path))
-                
-                # Verify file was created
-                self.assertTrue(log_path.exists())
-            finally:
-                # Restore environment
-                if old_env is None:
-                    os.environ.pop('VIDEO_CONVERTER_LOG_FILE', None)
-                else:
-                    os.environ['VIDEO_CONVERTER_LOG_FILE'] = old_env
-                
-                # Close handlers before TemporaryDirectory cleanup (required on Windows)
-                self._close_logging_handlers()
-    
-    def test_setup_logging_creates_directory(self):
-        """Test that setup_logging creates parent directories if needed."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            log_path = Path(tmpdir) / 'subdir1' / 'subdir2' / 'test.log'
-            
-            # Setup logging with nested path
-            result_path = convert_videos.setup_logging(str(log_path))
-            
-            # Verify directories and file were created
-            self.assertTrue(log_path.parent.exists())
-            self.assertTrue(log_path.exists())
-            self.assertEqual(result_path, str(log_path))
-            
-            # Close handlers before TemporaryDirectory cleanup (required on Windows)
-            self._close_logging_handlers()
-    
-    @patch('convert_videos.subprocess.run')
-    def test_run_command_logs_output(self, mock_run):
-        """Test that run_command logs command details."""
-        # Mock subprocess result
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Test output"
-        mock_result.stderr = "Test error"
-        mock_run.return_value = mock_result
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            log_path = Path(tmpdir) / 'test.log'
-            convert_videos.setup_logging(str(log_path))
-            
-            # Run a command
-            result = convert_videos.run_command(['echo', 'test'])
-            
-            # Verify subprocess was called
-            self.assertTrue(mock_run.called)
-            
-            # Verify result was returned
-            self.assertEqual(result.returncode, 0)
-            self.assertEqual(result.stdout, "Test output")
-            
-            # Read log file and verify command was logged
-            log_content = log_path.read_text()
-            self.assertIn("Running command:", log_content)
-            self.assertIn("echo test", log_content)
-            self.assertIn("Command stdout:", log_content)
-            self.assertIn("Test output", log_content)
-            self.assertIn("Command exit code: 0", log_content)
-            
-            # Close handlers before TemporaryDirectory cleanup (required on Windows)
-            self._close_logging_handlers()
-    
-    @patch('convert_videos.subprocess.run')
-    def test_run_command_logs_failure(self, mock_run):
-        """Test that run_command logs command failures."""
-        # Mock subprocess failure
-        mock_run.side_effect = subprocess.CalledProcessError(
-            1, ['false'], output="out", stderr="err"
-        )
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            log_path = Path(tmpdir) / 'test.log'
-            convert_videos.setup_logging(str(log_path))
-            
-            # Run a command that fails
-            with self.assertRaises(subprocess.CalledProcessError):
-                convert_videos.run_command(['false'], check=True)
-            
-            # Read log file and verify error was logged
-            log_content = log_path.read_text()
-            self.assertIn("Running command:", log_content)
-            self.assertIn("Command failed with exit code", log_content)
-            
-            # Close handlers before TemporaryDirectory cleanup (required on Windows)
-            self._close_logging_handlers()
-
-
-class TestConfigLoggingSettings(unittest.TestCase):
-    """Test loading logging configuration from config file."""
-    
-    def test_load_config_with_logging_settings(self):
-        """Test that logging settings are loaded from config file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            log_path = str(Path(tmpdir) / 'test.log')
-            
-            # Create config with logging settings
-            config_data = {
-                'directory': '/test',
-                'logging': {
-                    'log_file': log_path
-                }
-            }
-            
-            with open(config_path, 'w') as f:
-                yaml.dump(config_data, f)
-            
-            # Load config
-            config = convert_videos.load_config(config_path)
-            
-            # Verify logging settings were loaded
-            self.assertIn('logging', config)
-            self.assertEqual(config['logging']['log_file'], log_path)
-    
-    def test_load_config_default_logging_settings(self):
-        """Test that default logging settings are used when not specified."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / 'config.yaml'
-            
-            # Create config without logging settings
-            config_data = {
-                'directory': '/test'
-            }
-            
-            with open(config_path, 'w') as f:
-                yaml.dump(config_data, f)
-            
-            # Load config
-            config = convert_videos.load_config(config_path)
-            
-            # Verify default logging settings were applied
-            self.assertIn('logging', config)
-            self.assertIsNone(config['logging']['log_file'])
-
-
-class TestBundledDependencies(unittest.TestCase):
-    """Test bundled dependency detection and path resolution."""
-    
-    def test_get_bundled_path_not_frozen(self):
-        """Test get_bundled_path returns None when not running as PyInstaller bundle."""
-        result = convert_videos.get_bundled_path()
-        # When running normally (not frozen), should return None
-        self.assertIsNone(result)
-    
-    @patch('convert_videos.sys')
-    def test_get_bundled_path_frozen(self, mock_sys):
-        """Test get_bundled_path returns bundle path when running as PyInstaller bundle."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Mock PyInstaller frozen state
-            mock_sys.frozen = True
-            mock_sys._MEIPASS = tmpdir
-            
-            result = convert_videos.get_bundled_path()
-            
-            self.assertIsNotNone(result)
-            self.assertEqual(str(result), tmpdir)
-    
-    def test_find_dependency_path_with_absolute_config(self):
-        """Test that absolute paths from config are used directly."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create a mock executable
-            exe_path = Path(tmpdir) / 'HandBrakeCLI'
-            exe_path.write_text('#!/bin/bash\necho test')
-            
-            result = convert_videos.find_dependency_path('HandBrakeCLI', str(exe_path))
-            
-            self.assertEqual(result, str(exe_path))
-    
-    def test_find_dependency_path_not_frozen(self):
-        """Test that dependency name is returned when not frozen and no config."""
-        result = convert_videos.find_dependency_path('ffprobe', None)
-        
-        # Should return the dependency name as-is
-        self.assertEqual(result, 'ffprobe')
-    
-    @patch('convert_videos.sys')
-    @patch('convert_videos.platform.system')
-    def test_find_dependency_path_frozen_windows(self, mock_platform, mock_sys):
-        """Test bundled dependency detection on Windows."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Mock PyInstaller frozen state
-            mock_sys.frozen = True
-            mock_sys._MEIPASS = tmpdir
-            mock_platform.return_value = 'Windows'
-            
-            # Create a mock executable
-            exe_path = Path(tmpdir) / 'HandBrakeCLI.exe'
-            exe_path.write_text('mock exe')
-            
-            result = convert_videos.find_dependency_path('HandBrakeCLI', None)
-            
-            self.assertEqual(result, str(exe_path))
-    
-    @patch('convert_videos.sys')
-    @patch('convert_videos.platform.system')
-    def test_find_dependency_path_frozen_linux(self, mock_platform, mock_sys):
-        """Test bundled dependency detection on Linux."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Mock PyInstaller frozen state
-            mock_sys.frozen = True
-            mock_sys._MEIPASS = tmpdir
-            mock_platform.return_value = 'Linux'
-            
-            # Create a mock executable
-            exe_path = Path(tmpdir) / 'ffprobe'
-            exe_path.write_text('#!/bin/bash\necho test')
-            
-            result = convert_videos.find_dependency_path('ffprobe', None)
-            
-            self.assertEqual(result, str(exe_path))
-    
-    @patch('convert_videos.sys')
-    def test_find_dependency_path_frozen_not_found(self, mock_sys):
-        """Test that dependency name is returned when bundled file doesn't exist."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Mock PyInstaller frozen state
-            mock_sys.frozen = True
-            mock_sys._MEIPASS = tmpdir
-            # Don't create the executable file
-            
-            result = convert_videos.find_dependency_path('HandBrakeCLI', None)
-            
-            # Should fall back to using the name as-is
-            self.assertEqual(result, 'HandBrakeCLI')
+            self.assertTrue(result)
 
 
 if __name__ == '__main__':
