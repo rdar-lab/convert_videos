@@ -213,8 +213,56 @@ def _safe_extract_zip(zip_ref, extract_to):
     zip_ref.extractall(extract_to)
 
 
+def extract_dmg(dmg_path, extract_to):
+    """Extract HandBrakeCLI from a macOS DMG file.
+    
+    Args:
+        dmg_path: Path to the DMG file
+        extract_to: Directory to extract the CLI binary to
+        
+    Returns:
+        Path to extracted HandBrakeCLI binary, or None if extraction failed
+    """
+    try:
+        # Mount the DMG
+        logger.info(f"Mounting DMG: {dmg_path}")
+        result = subprocess.run(
+            ['hdiutil', 'attach', '-nobrowse', '-mountpoint', '/tmp/handbrake_mount', str(dmg_path)],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"Failed to mount DMG: {result.stderr}")
+            return None
+        
+        try:
+            # Look for HandBrakeCLI in the mounted app bundle
+            app_path = Path('/tmp/handbrake_mount/HandBrake.app/Contents/MacOS/HandBrakeCLI')
+            if app_path.exists():
+                dest_path = Path(extract_to) / 'HandBrakeCLI'
+                shutil.copy2(app_path, dest_path)
+                logger.info(f"Extracted HandBrakeCLI to {dest_path}")
+                return dest_path
+            else:
+                logger.error(f"HandBrakeCLI not found in expected location: {app_path}")
+                return None
+        finally:
+            # Always unmount the DMG
+            logger.info("Unmounting DMG...")
+            subprocess.run(['hdiutil', 'detach', '/tmp/handbrake_mount'], 
+                         capture_output=True, timeout=10)
+    except subprocess.TimeoutExpired:
+        logger.error("Timeout while processing DMG file")
+        return None
+    except Exception as e:
+        logger.error(f"Error extracting DMG: {repr(e)}")
+        return None
+
+
 def extract_archive(archive_path, extract_to):
-    """Extract tar.gz, zip, or other archive safely."""
+    """Extract tar.gz, zip, dmg, or other archive safely."""
 
     archive_path = str(archive_path)
 
@@ -225,6 +273,13 @@ def extract_archive(archive_path, extract_to):
     elif archive_path.endswith('.zip'):
         with zipfile.ZipFile(archive_path, 'r') as zip_ref:
             _safe_extract_zip(zip_ref, extract_to)
+    elif archive_path.endswith('.dmg'):
+        # DMG extraction is handled separately via extract_dmg
+        # This case shouldn't normally be hit as download_handbrake handles DMG directly
+        raise ValueError(f"DMG files should be processed with extract_dmg(), not extract_archive()")
+    elif archive_path.endswith('.flatpak'):
+        # Flatpak files require the flatpak runtime and cannot be extracted as simple archives
+        raise ValueError(f"Flatpak files are not supported for extraction. Please install HandBrakeCLI via system package manager.")
     else:
         raise ValueError(f"Unsupported archive format: {archive_path}")
     logger.info(f"Extracted to {extract_to}")
@@ -233,42 +288,58 @@ def extract_archive(archive_path, extract_to):
 def download_handbrake(tmpdir, download_dir):
     """Download HandBrakeCLI for the specified platform.
     
-    Note: For Linux and macOS, this relies on system installation or manual bundling
-    as HandBrake doesn't provide easily extractable binaries for these platforms.
+    Note: 
+    - Windows: Downloads and extracts ZIP archive
+    - macOS: Downloads DMG and extracts CLI from app bundle
+    - Linux: Auto-download not supported (flatpak requires runtime). 
+             Users should install via package manager or manually bundle the binary.
     """
     handbrake_dir = tmpdir / 'handbrake'
     handbrake_dir.mkdir(exist_ok=True)
     
-    # HandBrake CLI download URLs
-    urls = {
-        'windows': f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-win-x86_64.zip',
-        'linux': f"https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-x86_64.flatpak",
-        'macos': f"https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}.dmg"
-    }
-
     platform_name = get_platform()
     
-    if platform_name not in urls:
-        logger.warning(f"Warning: HandBrakeCLI auto-download not supported for {platform_name}")
-        return None
-    
-    url = urls[platform_name]
-    archive_name = url.split('/')[-1]
-    archive_path = handbrake_dir / archive_name
-    
-    if not download_file(url, archive_path):
-        return None
-    extract_archive(archive_path, handbrake_dir)
-    # Find HandBrakeCLI.exe
-    for root, dirs, files in os.walk(handbrake_dir):
-        if platform_name == 'windows':
+    # HandBrake CLI download URLs and handling
+    if platform_name == 'windows':
+        url = f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-win-x86_64.zip'
+        archive_name = url.split('/')[-1]
+        archive_path = handbrake_dir / archive_name
+        
+        if not download_file(url, archive_path):
+            return None
+        
+        extract_archive(archive_path, handbrake_dir)
+        
+        # Find HandBrakeCLI.exe in extracted files
+        for root, dirs, files in os.walk(handbrake_dir):
             if 'HandBrakeCLI.exe' in files:
                 shutil.copy(Path(root) / 'HandBrakeCLI.exe', download_dir / 'HandBrakeCLI.exe')
                 return download_dir / 'HandBrakeCLI.exe'
-        else:
-            if 'HandBrakeCLI' in files:
-                shutil.copy(Path(root) / 'HandBrakeCLI', download_dir / 'HandBrakeCLI')
-                return download_dir / 'HandBrakeCLI'
+                
+    elif platform_name == 'macos':
+        url = f"https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrake-{HANDBRAKE_VERSION}.dmg"
+        archive_name = url.split('/')[-1]
+        archive_path = handbrake_dir / archive_name
+        
+        if not download_file(url, archive_path):
+            return None
+        
+        # Extract HandBrakeCLI from DMG
+        cli_path = extract_dmg(archive_path, download_dir)
+        if cli_path:
+            return cli_path
+            
+    elif platform_name == 'linux':
+        # Linux: HandBrake CLI is not available as a simple download
+        # The flatpak is for the GUI and requires flatpak runtime
+        # Users should install via: apt-get install handbrake-cli
+        logger.warning("HandBrakeCLI auto-download not supported on Linux.")
+        logger.warning("Please install via package manager: sudo apt-get install handbrake-cli")
+        logger.warning("Or manually place HandBrakeCLI binary in the build directory.")
+        return None
+    else:
+        logger.warning(f"Warning: HandBrakeCLI auto-download not supported for {platform_name}")
+        return None
 
     logger.error("Was unable to find HandBrakeCLI executable in binary")
     return None
