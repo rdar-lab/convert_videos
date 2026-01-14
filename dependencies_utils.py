@@ -288,21 +288,23 @@ def extract_archive(archive_path, extract_to):
     if archive_path.endswith('.tar.gz') or archive_path.endswith('.tar.bz2') or archive_path.endswith('.tar.xz'):
         with tarfile.open(archive_path, 'r:*') as tar:
             _safe_extract_tar(tar, extract_to)
-        logger.info(f"Extracted to {extract_to}")
     elif archive_path.endswith('.zip'):
         with zipfile.ZipFile(archive_path, 'r') as zip_ref:
             _safe_extract_zip(zip_ref, extract_to)
-        logger.info(f"Extracted to {extract_to}")
     elif archive_path.endswith('.dmg'):
         # DMG extraction uses extract_dmg() which handles mounting and extracting from app bundle
         result = extract_dmg(archive_path, extract_to)
         if result is None:
             raise ValueError(f"Failed to extract HandBrakeCLI from DMG: {archive_path}")
+        # extract_dmg logs its own success message, so we don't need to log again
+        return
     elif archive_path.endswith('.flatpak'):
         # Flatpak files require the flatpak runtime and cannot be extracted as simple archives
         raise ValueError(f"Flatpak files are not supported for extraction. Please install HandBrakeCLI via system package manager.")
     else:
         raise ValueError(f"Unsupported archive format: {archive_path}")
+    
+    logger.info(f"Extracted to {extract_to}")
 
 
 def download_handbrake(tmpdir, download_dir):
