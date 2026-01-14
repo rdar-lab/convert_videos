@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/bash
 set -e
 
 DRY_RUN=false
@@ -17,19 +17,23 @@ done
 TARGET_DIR=${ARGS[0]:-/data}
 
 # Build command with appropriate flags using array
-CMD_ARGS=('python3' '/usr/local/bin/convert_videos.py')
-
-# Always run in background mode for Docker (no GUI)
-CMD_ARGS+=('--background')
+# Use -u flag for unbuffered output so logs appear immediately in Docker
+CMD_ARGS=('python3' '-u' '/usr/local/bin/convert_videos_cli.py')
 
 if $DRY_RUN; then
     echo "Running in dry-run mode: no actual conversion will be done."
     CMD_ARGS+=('--dry-run')
 fi
 
-# Always run in loop mode for Docker
-CMD_ARGS+=('--loop')
-CMD_ARGS+=("$TARGET_DIR")
+# Check if config.yaml exists in a separate config directory
+if [[ -f "/config/config.yaml" ]]; then
+    echo "Using config file: /config/config.yaml"
+    CMD_ARGS+=('--config' '/config/config.yaml')
+else
+    # Always run in loop mode for Docker when no config
+    CMD_ARGS+=('--loop')
+    CMD_ARGS+=("$TARGET_DIR")
+fi
 
 # Execute the command
 exec "${CMD_ARGS[@]}"

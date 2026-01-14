@@ -57,8 +57,15 @@ Examples:
 
     args = parser.parse_args()
 
+    # Print to stderr first for immediate visibility (before logging is setup)
+    print(f"starting... args: config={args.config}, directory={args.directory}", file=sys.stderr)
+
     # First we init logging - first log of init will go to temp location
     logging_utils.setup_logging()
+
+    logger.info("=== Video Converter Starting ===")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Arguments: {vars(args)}")
 
     # Load configuration file
     config, validation_errors = configuration_manager.load_config(
@@ -142,4 +149,8 @@ Examples:
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        logger.error(f"Fatal error: {e}", exc_info=True)
+        sys.exit(1)

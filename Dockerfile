@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 
 ARG UBUNTU_MIRROR=http://archive.ubuntu.com/ubuntu
 RUN sed -i "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|g" /etc/apt/sources.list 
-RUN find /etc/apt/sources.list.d/ -type f -exec sed -i 's|http://archive.ubuntu.com/ubuntu|http://il.archive.ubuntu.com/ubuntu|g' {} \; 
+RUN find /etc/apt/sources.list.d/ -type f -exec sed -i "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|g" {} \; 
 
 RUN apt-get update 
 RUN apt-get upgrade -y 
@@ -29,10 +29,9 @@ RUN apt-get install -y handbrake-cli
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-COPY convert_videos.py /usr/local/bin/convert_videos.py
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY . /usr/local/bin/
 
-RUN chmod +x /usr/local/bin/convert_videos.py /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
