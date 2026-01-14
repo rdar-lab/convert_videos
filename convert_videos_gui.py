@@ -85,7 +85,6 @@ class VideoConverterGUI:
         # Thread communication
         self.progress_queue = queue.Queue()
         self.conversion_thread = None
-        self.current_process = None  # Track current subprocess for cancellation
 
         # Create UI
         self.create_ui()
@@ -858,9 +857,8 @@ class VideoConverterGUI:
     def convert_file_with_progress(self, input_path, dry_run, preserve_original, output_config, dependency_config):
         """Convert a file while reporting progress to the GUI.
 
-        This wraps convert_videos.convert_file but captures HandBrake output to parse progress.
+        This now delegates to convert_videos.convert_file with progress callbacks.
         """
-        import sys
         from pathlib import Path
 
         input_path = Path(input_path)
@@ -869,137 +867,33 @@ class VideoConverterGUI:
             logger.info(f"[Dry Run] Would convert: {input_path}")
             return True
 
-        # Prepare output path (same logic as convert_videos.py)
-        output_format = output_config.get('format', 'mkv')
-        base_name = f"{input_path.stem}.converted"
-        output_path = input_path.with_name(f"{base_name}.{output_format}")
-        temp_output = output_path.with_suffix(f'.{output_format}.temp')
+        # Create progress callback that communicates with GUI
+        def progress_callback(percentage):
+            self.progress_queue.put(('progress', percentage))
 
-        if output_path.exists() or temp_output.exists():
-            counter = 1
-            while True:
-                output_path = input_path.with_name(
-                    f"{base_name}.{counter}.{output_format}")
-                temp_output = output_path.with_suffix(f'.{output_format}.temp')
-                if not output_path.exists() and not temp_output.exists():
-                    break
-                counter += 1
-
-        # Build HandBrakeCLI command
-        handbrake_path = dependency_config.get('handbrake', 'HandBrakeCLI')
-        encoder_type = output_config.get('encoder', 'x265_10bit')
-        encoder_preset = output_config.get('preset', 'medium')
-        quality = output_config.get('quality', 24)
-
-        effective_preset = configuration_manager.map_preset_for_encoder(
-            encoder_preset, encoder_type)
-
-        cmd = [
-            handbrake_path,
-            '-i', str(input_path),
-            '-o', str(temp_output),
-            '-f', output_format,
-            '--all-audio',
-            '--aencoder', 'copy',
-            '--all-subtitles'
-        ]
-
-        # Configure encoder
-        if encoder_type == 'nvenc_hevc':
-            cmd.extend(['-e', 'nvenc_h265', '--encoder-preset',
-                       effective_preset, '-q', str(quality)])
-        elif encoder_type == 'x265_10bit':
-            cmd.extend(['-e', 'x265', '--encoder-preset', effective_preset,
-                       '--encoder-profile', 'main10', '-q', str(quality)])
-        elif encoder_type == 'x265':
-            cmd.extend(['-e', 'x265', '--encoder-preset',
-                       effective_preset, '-q', str(quality)])
+        # Create cancellation check
+        def cancellation_check():
+            return self.stop_requested
 
         try:
-            # Start process with output capture
-            if sys.platform == 'win32':
-                BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
-                CREATE_NO_WINDOW = 0x08000000  # Prevents console window flash
-                self.current_process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    universal_newlines=True,
-                    bufsize=1,
-                    creationflags=BELOW_NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW
-                )
-            else:
-                try:
-                    command_args = ['nice', '-n', '10'] + cmd
-                    self.current_process = subprocess.Popen(
-                        command_args,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        universal_newlines=True,
-                        bufsize=1
-                    )
-                except FileNotFoundError:
-                    self.current_process = subprocess.Popen(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        universal_newlines=True,
-                        bufsize=1
-                    )
-
-            # Parse output for progress
-            progress_pattern = re.compile(r'Encoding:.+?([0-9.]+) %')
-            for line in self.current_process.stdout:
-                if self.stop_requested:
-                    break
-
-                # Look for progress percentage
-                match = progress_pattern.search(line)
-                if match:
-                    percentage = float(match.group(1))
-                    self.progress_queue.put(('progress', percentage))
-
-            # Wait for completion
-            return_code = self.current_process.wait()
-
-            # If a stop was requested, ensure the process is terminated
-            if self.stop_requested:
-                if self.current_process is not None and self.current_process.poll() is None:
-                    try:
-                        self.current_process.terminate()
-                    except Exception:
-                        pass
-                    try:
-                        self.current_process.wait(timeout=5)
-                    except Exception:
-                        pass
-                self.current_process = None
-                if temp_output.exists():
-                    temp_output.unlink()
-                return False
-
-            self.current_process = None
-
-            if return_code != 0:
-                # Cleanup temp file
-                if temp_output.exists():
-                    temp_output.unlink()
-                return False
-
-            # Validate and finalize
-            return convert_videos.validate_and_finalize(
-                input_path, temp_output, output_path, preserve_original, dependency_config
+            # Use convert_videos.convert_file with progress callbacks
+            success = convert_videos.convert_file(
+                input_path=input_path,
+                dry_run=dry_run,
+                preserve_original=preserve_original,
+                output_config=output_config,
+                dependency_config=dependency_config,
+                progress_callback=progress_callback,
+                cancellation_check=cancellation_check
             )
+            return success
 
         except Exception as e:
+            # Check if this was a cancellation
+            if self.stop_requested or "cancelled" in str(e).lower():
+                logger.info(f"Conversion cancelled for {input_path}")
+                return False
             logger.error(f"Conversion error: {repr(e)}")
-            self.current_process = None
-            if temp_output.exists():
-                try:
-                    temp_output.unlink()
-                except Exception as cleanup_error:
-                    logger.warning(
-                        "Failed to remove temporary output file %s: %r", temp_output, cleanup_error)
             return False
 
     def start_processing(self):
@@ -1116,24 +1010,10 @@ class VideoConverterGUI:
         self.conversion_thread.start()
 
     def stop_processing(self):
-        """Stop the current processing and terminate HandBrake."""
+        """Stop the current processing."""
         self.stop_requested = True
         self.stop_button.config(state='disabled')
-
-        # Terminate the current HandBrake process if running
-        if self.current_process is not None:
-            try:
-                self.current_process.terminate()
-                logger.info("Terminating current HandBrake process...")
-                # Give it a moment to terminate gracefully
-                try:
-                    self.current_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    # Force kill if it doesn't terminate
-                    self.current_process.kill()
-                    logger.info("Force killed HandBrake process")
-            except Exception as e:
-                logger.error(f"Error terminating process: {repr(e)}")
+        logger.info("Stop requested by user")
 
     def reset_ui_state(self):
         """Reset UI to idle state."""

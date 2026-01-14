@@ -10,6 +10,7 @@ which prevents subprocess timeouts in GUI applications.
 import sys
 import subprocess
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,126 @@ def run_command(command_args, **kwargs):
                     f"Command stderr (truncated to {MAX_OUTPUT_LENGTH} chars): {stderr_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stderr_stripped)} chars]")
             else:
                 logger.error(f"Command stderr: {stderr_stripped}")
+        raise
+    except Exception as e:
+        logger.error(f"Command execution error: {type(e).__name__}: {e}")
+        raise
+
+
+def run_command_with_progress(command_args, progress_callback=None, progress_pattern=None, cancellation_check=None, **kwargs):
+    """Run a subprocess command with progress monitoring.
+
+    This function runs a command and monitors its output for progress updates.
+    It's designed for long-running commands that report progress (e.g., HandBrakeCLI).
+
+    Args:
+        command_args: List of command arguments
+        progress_callback: Optional callback function(percentage: float) called with progress updates
+        progress_pattern: Optional regex pattern to extract progress percentage from output.
+                         The pattern should have a capture group for the percentage number.
+                         Default: r'Encoding:.+?([0-9.]+) %' (HandBrakeCLI format)
+        cancellation_check: Optional callback function() -> bool that returns True if operation should be cancelled
+        **kwargs: Additional arguments to pass to subprocess.Popen
+
+    Returns:
+        subprocess.CompletedProcess: Result of the command execution with stdout/stderr captured
+
+    Raises:
+        subprocess.CalledProcessError: If the command returns a non-zero exit code
+        Exception: If cancellation_check returns True during execution
+    """
+    logger.info(f"Running command with progress: {' '.join(str(arg) for arg in command_args)}")
+
+    # Default progress pattern for HandBrakeCLI
+    if progress_pattern is None:
+        progress_pattern = re.compile(r'Encoding:.+?([0-9.]+) %')
+    elif isinstance(progress_pattern, str):
+        progress_pattern = re.compile(progress_pattern)
+
+    # Set up output capture
+    kwargs['stdout'] = subprocess.PIPE
+    kwargs['stderr'] = subprocess.STDOUT  # Merge stderr into stdout for unified progress monitoring
+    kwargs['universal_newlines'] = True
+    kwargs['bufsize'] = 1  # Line buffered
+
+    # On Windows frozen apps, add CREATE_NO_WINDOW flag
+    if sys.platform == 'win32' and getattr(sys, 'frozen', False):
+        CREATE_NO_WINDOW = 0x08000000
+        kwargs['creationflags'] = kwargs.get('creationflags', 0) | CREATE_NO_WINDOW
+
+    try:
+        process = subprocess.Popen(command_args, **kwargs)
+        
+        # Collect output for logging
+        output_lines = []
+        
+        # Monitor output for progress
+        for line in process.stdout:
+            output_lines.append(line)
+            
+            # Check for cancellation
+            if cancellation_check and cancellation_check():
+                logger.info("Cancellation requested, terminating process")
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                raise Exception("Operation cancelled by user")
+            
+            # Extract and report progress
+            if progress_callback and progress_pattern:
+                match = progress_pattern.search(line)
+                if match:
+                    try:
+                        percentage = float(match.group(1))
+                        progress_callback(percentage)
+                    except (ValueError, IndexError):
+                        pass  # Ignore invalid progress values
+        
+        # Wait for completion
+        return_code = process.wait()
+        
+        # Combine output
+        stdout = ''.join(output_lines)
+        
+        # Create result object similar to subprocess.run
+        result = subprocess.CompletedProcess(
+            args=command_args,
+            returncode=return_code,
+            stdout=stdout,
+            stderr=None  # stderr was merged into stdout
+        )
+        
+        # Log results
+        MAX_OUTPUT_LENGTH = 2000
+        if stdout:
+            stdout_stripped = stdout.strip()
+            if len(stdout_stripped) > MAX_OUTPUT_LENGTH:
+                logger.info(
+                    f"Command stdout (truncated to {MAX_OUTPUT_LENGTH} chars): {stdout_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stdout_stripped)} chars]")
+            else:
+                logger.info(f"Command stdout: {stdout_stripped}")
+        
+        logger.info(f"Command exit code: {return_code}")
+        
+        # Raise exception if command failed
+        if return_code != 0:
+            raise subprocess.CalledProcessError(return_code, command_args, stdout, None)
+        
+        return result
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed with exit code {e.returncode}")
+        if e.stdout:
+            stdout_stripped = e.stdout.strip()
+            MAX_OUTPUT_LENGTH = 2000
+            if len(stdout_stripped) > MAX_OUTPUT_LENGTH:
+                logger.error(
+                    f"Command stdout (truncated to {MAX_OUTPUT_LENGTH} chars): {stdout_stripped[:MAX_OUTPUT_LENGTH]}... [output truncated, total length: {len(stdout_stripped)} chars]")
+            else:
+                logger.error(f"Command stdout: {stdout_stripped}")
         raise
     except Exception as e:
         logger.error(f"Command execution error: {type(e).__name__}: {e}")
