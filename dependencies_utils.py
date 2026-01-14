@@ -276,7 +276,11 @@ def extract_dmg(dmg_path, extract_to):
 
 
 def extract_archive(archive_path, extract_to):
-    """Extract tar.gz, zip, dmg, or other archive safely."""
+    """Extract tar.gz, zip, dmg, or other archive safely.
+    
+    For DMG files, extracts HandBrakeCLI binary from the app bundle directly to extract_to.
+    For other archives, extracts all contents to extract_to directory.
+    """
 
     archive_path = str(archive_path)
 
@@ -284,19 +288,21 @@ def extract_archive(archive_path, extract_to):
     if archive_path.endswith('.tar.gz') or archive_path.endswith('.tar.bz2') or archive_path.endswith('.tar.xz'):
         with tarfile.open(archive_path, 'r:*') as tar:
             _safe_extract_tar(tar, extract_to)
+        logger.info(f"Extracted to {extract_to}")
     elif archive_path.endswith('.zip'):
         with zipfile.ZipFile(archive_path, 'r') as zip_ref:
             _safe_extract_zip(zip_ref, extract_to)
+        logger.info(f"Extracted to {extract_to}")
     elif archive_path.endswith('.dmg'):
-        # DMG extraction is handled separately via extract_dmg
-        # This case shouldn't normally be hit as download_handbrake handles DMG directly
-        raise ValueError(f"DMG files should be processed with extract_dmg(), not extract_archive()")
+        # DMG extraction uses extract_dmg() which handles mounting and extracting from app bundle
+        result = extract_dmg(archive_path, extract_to)
+        if result is None:
+            raise ValueError(f"Failed to extract HandBrakeCLI from DMG: {archive_path}")
     elif archive_path.endswith('.flatpak'):
         # Flatpak files require the flatpak runtime and cannot be extracted as simple archives
         raise ValueError(f"Flatpak files are not supported for extraction. Please install HandBrakeCLI via system package manager.")
     else:
         raise ValueError(f"Unsupported archive format: {archive_path}")
-    logger.info(f"Extracted to {extract_to}")
 
 
 def download_handbrake(tmpdir, download_dir):
@@ -338,9 +344,12 @@ def download_handbrake(tmpdir, download_dir):
         if not download_file(url, archive_path):
             return None
         
-        # Extract HandBrakeCLI from DMG
-        cli_path = extract_dmg(archive_path, download_dir)
-        if cli_path:
+        # Extract HandBrakeCLI from DMG (extract_archive handles DMG internally)
+        extract_archive(archive_path, download_dir)
+        
+        # HandBrakeCLI should now be in download_dir
+        cli_path = download_dir / 'HandBrakeCLI'
+        if cli_path.exists():
             return cli_path
             
     elif platform_name == 'linux':
