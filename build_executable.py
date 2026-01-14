@@ -26,7 +26,16 @@ import tarfile
 import zipfile
 import shutil
 import argparse
+import logging
 from pathlib import Path
+
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s: %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 # Version constants for external tools
@@ -261,13 +270,16 @@ def find_system_binary(binary_name):
                 # Get the first line (first match) and strip whitespace
                 binary_path = result.stdout.strip().split('\n')[0]
                 if binary_path and Path(binary_path).exists():
-                    print(f"Found system binary {binary_name} as {name}: {binary_path}")
+                    logger.info(f"Found system binary {binary_name} as {name}: {binary_path}")
                     return binary_path
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
-            # Continue to next variant
-            pass
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Timeout while searching for {name}")
+        except FileNotFoundError:
+            logger.debug(f"Command not found while searching for {name}")
+        except OSError as e:
+            logger.warning(f"OS error while searching for {name}: {e}")
     
-    print(f"Could not find {binary_name} in system PATH (tried: {', '.join(names_to_try)})")
+    logger.info(f"Could not find {binary_name} in system PATH (tried: {', '.join(names_to_try)})")
     return None
 
 
@@ -289,7 +301,7 @@ def handle_ffmpeg_paths(args, ffmpeg_bin=None, ffprobe_bin=None):
             'ffprobe': args.ffprobe_path
         }
     elif args.ffmpeg_path or args.ffprobe_path:
-        print("Warning: Both --ffmpeg-path and --ffprobe-path must be provided together")
+        logger.warning("Both --ffmpeg-path and --ffprobe-path must be provided together")
         return None
     
     # Otherwise use system binaries if provided
