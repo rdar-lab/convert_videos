@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 
 ARG UBUNTU_MIRROR=http://archive.ubuntu.com/ubuntu
 RUN sed -i "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|g" /etc/apt/sources.list 
-RUN find /etc/apt/sources.list.d/ -type f -exec sed -i 's|http://archive.ubuntu.com/ubuntu|http://il.archive.ubuntu.com/ubuntu|g' {} \; 
+RUN find /etc/apt/sources.list.d/ -type f -exec sed -i "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|g" {} \; 
 
 RUN apt-get update 
 RUN apt-get upgrade -y 
