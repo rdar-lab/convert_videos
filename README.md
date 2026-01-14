@@ -17,11 +17,8 @@ Benefits:
 The default mode launches a graphical user interface when no arguments are provided:
 
 ```bash
-# Launch GUI (default - no arguments)
-python convert_videos.py
-
-# Or explicitly with --gui flag
-python convert_videos.py --gui
+# Launch GUI
+python convert_videos_gui.py
 ```
 
 The GUI provides:
@@ -38,19 +35,16 @@ The GUI provides:
 Background mode is used when providing arguments (directory, config, flags) or explicitly with `--background`:
 
 ```bash
-# Run with config file (background mode)
-python convert_videos.py --config config.yaml
+# Run with config file
+python convert_videos_cli.py --config config.yaml
 
 # Single run with directory
-python convert_videos.py /path/to/videos
-
-# With --background flag explicitly
-python convert_videos.py --background /path/to/videos
+python convert_videos_cli.py /path/to/videos
 
 # Continuous monitoring (scans every hour)
-python convert_videos.py --background --loop /path/to/videos
+python convert_videos.py --loop /path/to/videos
 
-# Docker mode (automatically runs in background)
+# Docker mode 
 docker run -d -v /path/to/videos:/data rdxmaster/convert_videos
 ```
 
@@ -167,26 +161,12 @@ See **[WINDOWS_INSTALL.md](WINDOWS_INSTALL.md)** for detailed Windows installati
 # Install Python dependencies:
 pip install -r requirements.txt
 
-# Run with GUI (default - no arguments):
-python convert_videos.py
+# Run with GUI:
+python convert_videos_gui.py
 
 # Or run with directory (background mode):
-python convert_videos.py "C:\Path\To\Videos"
+python convert_videos_cli.py "C:\Path\To\Videos"
 
-# Run with config file (background mode):
-python convert_videos.py --config config.yaml
-
-# Run continuously:
-python convert_videos.py --loop "C:\Path\To\Videos"
-
-# Dry run to see what would be converted:
-python convert_videos.py --dry-run "C:\Path\To\Videos"
-
-# Remove original files after conversion:
-python convert_videos.py --remove-original-files "C:\Path\To\Videos"
-
-# Explicitly use background mode:
-python convert_videos.py --background "C:\Path\To\Videos"
 ```
 
 ### Linux/macOS (Without Docker)
@@ -206,23 +186,11 @@ pip3 install -r requirements.txt
 
 **Run the script:**
 ```bash
-# Run with GUI (default - no arguments):
-python3 convert_videos.py
+# Run with GUI:
+python3 convert_videos_gui.py
 
 # Run with directory (background mode):
 python3 convert_videos.py /path/to/videos
-
-# Run with config file (background mode):
-python3 convert_videos.py --config config.yaml
-
-# Run continuously:
-python3 convert_videos.py --loop /path/to/videos
-
-# Remove original files after conversion:
-python3 convert_videos.py --remove-original-files /path/to/videos
-
-# Explicitly use background mode:
-python3 convert_videos.py --background /path/to/videos
 ```
 
 ### Docker (Linux)
@@ -298,10 +266,10 @@ This project includes comprehensive unit tests and continuous integration.
 pip install -r requirements-dev.txt
 
 # Run tests
-pytest test_convert_videos.py -v
+pytest -v
 
 # Run tests with coverage
-pytest test_convert_videos.py --cov=convert_videos --cov-report=term-missing
+pytest --cov=convert_videos --cov-report=term-missing
 ```
 
 See [TESTING.md](TESTING.md) for detailed testing documentation.
