@@ -141,6 +141,7 @@ class TestDockerLive(unittest.TestCase):
         image_tag: str,
         container_name: str,
         mount_path: Path,
+        config_path: Path = None,
         timeout: int = 120
     ) -> bool:
         """
@@ -150,6 +151,7 @@ class TestDockerLive(unittest.TestCase):
             image_tag: Docker image tag to run
             container_name: Name for the container
             mount_path: Path to mount as /data in the container
+            config_path: Optional path to config directory to mount as /config
             timeout: Maximum time to wait for processing (seconds)
             
         Returns:
@@ -164,8 +166,14 @@ class TestDockerLive(unittest.TestCase):
                 '-d',  # Detached mode
                 '--name', container_name,
                 '-v', f'{mount_path}:/data',
-                image_tag
             ]
+            
+            # Mount config directory if provided
+            if config_path and config_path.exists():
+                cmd.extend(['-v', f'{config_path}:/config'])
+                print(f"Mounting config directory: {config_path} -> /config")
+            
+            cmd.append(image_tag)
             
             result = subprocess.run(
                 cmd,
@@ -349,6 +357,10 @@ class TestDockerLive(unittest.TestCase):
                 print("STEP 3: Creating configuration file")
                 print("="*60)
                 
+                # Create a separate directory for config
+                config_dir = tmpdir_path / 'config'
+                config_dir.mkdir(exist_ok=True)
+                
                 config = {
                     'directory': '/data',
                     'min_file_size': '1B',  # Accept any file size for testing
@@ -363,7 +375,7 @@ class TestDockerLive(unittest.TestCase):
                     'dry_run': False
                 }
                 
-                config_path = tmpdir_path / 'config.yaml'
+                config_path = config_dir / 'config.yaml'
                 with open(config_path, 'w') as f:
                     yaml.dump(config, f)
                 
@@ -381,6 +393,7 @@ class TestDockerLive(unittest.TestCase):
                     image_tag,
                     container_name,
                     tmpdir_path,
+                    config_path=config_dir,
                     timeout=120
                 )
                 self.assertTrue(run_success, "Docker container did not process files successfully")
