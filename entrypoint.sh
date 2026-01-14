@@ -27,9 +27,15 @@ if $DRY_RUN; then
     CMD_ARGS+=('--dry-run')
 fi
 
-# Always run in loop mode for Docker
-CMD_ARGS+=('--loop')
-CMD_ARGS+=("$TARGET_DIR")
+# Check if config.yaml exists in the target directory
+if [[ -f "${TARGET_DIR}/config.yaml" ]]; then
+    echo "Using config file: ${TARGET_DIR}/config.yaml"
+    CMD_ARGS+=('--config' "${TARGET_DIR}/config.yaml")
+else
+    # Always run in loop mode for Docker when no config
+    CMD_ARGS+=('--loop')
+    CMD_ARGS+=("$TARGET_DIR")
+fi
 
 # Execute the command
 exec "${CMD_ARGS[@]}"
