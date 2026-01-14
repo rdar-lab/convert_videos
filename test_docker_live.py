@@ -224,7 +224,7 @@ class TestDockerLive(unittest.TestCase):
                         timeout=10
                     )
                     print("Container logs:")
-                    print(log_result.stdout[-1000:])
+                    print(log_result.stdout)
                     return False
                 
                 time.sleep(2)  # Check every 2 seconds
@@ -240,7 +240,7 @@ class TestDockerLive(unittest.TestCase):
                 timeout=10
             )
             print("Container logs:")
-            print(log_result.stdout[-1000:])
+            print(log_result.stdout)
             
             return False
             

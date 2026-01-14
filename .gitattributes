@@ -1,0 +1,12 @@
+# Default behavior: auto-detect text files and normalize to LF in the repo
+* text=auto
+
+# FORCE shell scripts to always use LF, even on Windows checkouts
+*.sh text eol=lf
+*.bash text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+
+# (Optional) Force Windows-specific scripts to stay CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
