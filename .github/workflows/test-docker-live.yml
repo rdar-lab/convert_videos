@@ -44,7 +44,7 @@ jobs:
     - name: Run Docker live integration test
       run: |
         pytest test_docker_live.py -v -s
-      timeout-minutes: ${{ fromJSON(github.event.inputs.timeout || '180') }}
+      timeout-minutes: 10
       env:
         DOCKER_TEST_TIMEOUT: ${{ github.event.inputs.timeout || '180' }}
     

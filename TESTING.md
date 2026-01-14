@@ -28,7 +28,26 @@ pytest -v --cov=convert_videos --cov-report=term-missing
 pytest test_convert_videos.py -v
 pytest test_convert_videos_gui.py -v
 pytest test_duplicate_detector.py -v
+pytest test_docker_live.py -v  # Docker integration test (Linux only, requires Docker)
 ```
+
+### Run Docker Integration Test
+
+The Docker live integration test validates the full Docker workflow end-to-end:
+
+```bash
+# Requires: Linux OS, Docker installed, ffmpeg available
+pytest test_docker_live.py -v -s
+```
+
+**Note:** This test is resource-intensive and:
+- Only runs on Linux systems
+- Requires Docker to be installed and running
+- Builds a Docker image from the Dockerfile
+- Creates and runs a container to test video conversion
+- May take several minutes to complete
+- Will skip automatically if prerequisites are not met
+- Will skip if SSL/network issues prevent Docker build (environment issue)
 
 ### Run Specific Test Class
 
@@ -44,7 +63,7 @@ pytest test_convert_videos.py::TestFileSizeParsing::test_parse_file_size_gigabyt
 
 ## Test Coverage
 
-The test suite includes **81 tests** across three test files:
+The test suite includes **82 tests** across four test files:
 
 ### test_convert_videos.py (65 tests)
 - **File size parsing** - Various formats (bytes, KB, MB, GB) with validation
@@ -69,6 +88,17 @@ The test suite includes **81 tests** across three test files:
 - **Hamming distance** - Similarity calculation
 - **Thumbnail generation** - Comparison thumbnail creation
 
+### test_docker_live.py (1 test)
+- **Docker integration** - End-to-end Docker workflow testing
+  - Prerequisites checking (Linux OS, Docker availability)
+  - Docker image building from Dockerfile
+  - Test video creation (minimal MP4 or ffmpeg-generated)
+  - Configuration deployment
+  - Container execution and video conversion
+  - Result validation (converted file created, original removed)
+  - Resource cleanup (containers and images)
+  - Graceful skipping on environment issues
+
 Current code coverage: **66%**
 
 ## Continuous Integration
@@ -82,6 +112,21 @@ The CI pipeline runs on multiple platforms using a matrix strategy:
 - **Python Version**: 3.11
 - **Test Files**: All test files (test_convert_videos.py, test_convert_videos_gui.py, test_duplicate_detector.py)
 - **Strategy**: fail-fast is disabled to ensure all platform tests complete even if one fails
+
+### Docker Integration Test Workflow
+
+A separate GitHub Actions workflow (`test-docker-live.yml`) is available for Docker integration testing:
+- **Trigger**: Manual only (workflow_dispatch) - not run automatically
+- **Purpose**: Validates the complete Docker build and runtime workflow
+- **Platform**: Ubuntu Latest only
+- **Requirements**: Docker must be available (always true in GitHub Actions)
+- **Duration**: ~5-10 minutes depending on Docker build cache
+
+To run the Docker integration test manually in GitHub Actions:
+1. Navigate to the "Actions" tab in the repository
+2. Select "Docker Live Integration Tests" workflow
+3. Click "Run workflow"
+4. Optionally adjust the timeout parameter (default: 180 seconds)
 
 ## Cross-Platform Compatibility
 
