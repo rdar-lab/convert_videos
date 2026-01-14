@@ -13,13 +13,21 @@ pip install -r requirements-dev.txt
 ### Run All Tests
 
 ```bash
-pytest test_convert_videos.py -v
+pytest -v
 ```
 
 ### Run Tests with Coverage
 
 ```bash
-pytest test_convert_videos.py -v --cov=convert_videos --cov-report=term-missing
+pytest -v --cov=convert_videos --cov-report=term-missing
+```
+
+### Run Specific Test File
+
+```bash
+pytest test_convert_videos.py -v
+pytest test_convert_videos_gui.py -v
+pytest test_duplicate_detector.py -v
 ```
 
 ### Run Specific Test Class
@@ -36,8 +44,9 @@ pytest test_convert_videos.py::TestFileSizeParsing::test_parse_file_size_gigabyt
 
 ## Test Coverage
 
-The test suite includes **44 tests** covering:
+The test suite includes **81 tests** across three test files:
 
+### test_convert_videos.py (65 tests)
 - **File size parsing** - Various formats (bytes, KB, MB, GB) with validation
 - **Validation functions** - Encoder types, formats, presets, and quality values
 - **Preset mapping** - Mapping between x265 and NVENC encoder presets
@@ -48,6 +57,17 @@ The test suite includes **44 tests** covering:
 - **Validation and finalization** - Comparing durations and handling success/failure
 - **Conversion validation** - Parameter validation in convert_file function
 - **Dependency checking** - Ensuring required tools are installed
+- **Logging functionality** - Log file setup and configuration
+- **Bundled dependencies** - PyInstaller frozen app dependency resolution
+
+### test_convert_videos_gui.py (8 tests)
+- **ConversionResult** - Result data structure for conversion operations
+- **GUI helper methods** - Size formatting for display
+
+### test_duplicate_detector.py (8 tests)
+- **Duplicate detection** - Hash-based video duplicate detection
+- **Hamming distance** - Similarity calculation
+- **Thumbnail generation** - Comparison thumbnail creation
 
 Current code coverage: **66%**
 
@@ -57,9 +77,19 @@ Tests are automatically run via GitHub Actions on:
 - Push to main/master/develop branches
 - Pull requests targeting main/master/develop branches
 
-The CI pipeline runs on:
-- **Operating System**: Ubuntu Latest
+The CI pipeline runs on multiple platforms using a matrix strategy:
+- **Operating Systems**: Ubuntu Latest, Windows Latest, macOS Latest
 - **Python Version**: 3.11
+- **Test Files**: All test files (test_convert_videos.py, test_convert_videos_gui.py, test_duplicate_detector.py)
+- **Strategy**: fail-fast is disabled to ensure all platform tests complete even if one fails
+
+## Cross-Platform Compatibility
+
+Tests are designed to run on Windows, macOS, and Linux:
+- Path operations use `pathlib.Path` for cross-platform compatibility
+- Temporary directories use `tempfile.TemporaryDirectory()`
+- Mock paths in tests are platform-independent
+- Windows-specific executable extensions (.exe) are handled appropriately
 
 ## Test Structure
 
