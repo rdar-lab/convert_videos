@@ -390,14 +390,6 @@ def main():
     parser = argparse.ArgumentParser(description='Build portable executable for convert_videos')
     parser.add_argument('--platform', choices=['windows', 'linux', 'macos'],
                         help='Target platform (default: auto-detect)')
-    parser.add_argument('--skip-download', action='store_true',
-                        help='Skip downloading external binaries (HandBrake, ffmpeg)')
-    parser.add_argument('--handbrake-path', type=str,
-                        help='Path to HandBrakeCLI binary to bundle')
-    parser.add_argument('--ffmpeg-path', type=str,
-                        help='Path to ffmpeg binary to bundle')
-    parser.add_argument('--ffprobe-path', type=str,
-                        help='Path to ffprobe binary to bundle')
     
     args = parser.parse_args()
     
@@ -408,44 +400,53 @@ def main():
     # Install PyInstaller
     install_pyinstaller()
     
-    # Download or use provided binaries
+    # Always download dependencies
     binaries_data = {}
+    download_dir = Path('external_binaries')
+    download_dir.mkdir(exist_ok=True)
     
-    if not args.skip_download:
-        download_dir = Path('external_binaries')
-        download_dir.mkdir(exist_ok=True)
-        
-        # Download HandBrake
-        if not args.handbrake_path:
-            print("\nDownloading HandBrakeCLI...")
-            handbrake_bin = download_handbrake(target_platform, download_dir)
-            if handbrake_bin:
-                binaries_data['handbrake'] = str(handbrake_bin)
+    # Download HandBrakeCLI
+    print("\nDownloading HandBrakeCLI...")
+    handbrake_bin = download_handbrake(target_platform, download_dir)
+    if handbrake_bin:
+        binaries_data['handbrake'] = str(handbrake_bin)
+    else:
+        print("\n[FAILED] HandBrakeCLI download failed!")
+        sys.exit(1)
+    
+    # Download FFmpeg
+    print("\nDownloading FFmpeg...")
+    ffmpeg_bins = download_ffmpeg(target_platform, download_dir)
+    if ffmpeg_bins:
+        ffmpeg_data = {}
+        ffmpeg_path = ffmpeg_bins.get('ffmpeg')
+        if ffmpeg_path is not None:
+            ffmpeg_data['ffmpeg'] = str(ffmpeg_path)
+        ffprobe_path = ffmpeg_bins.get('ffprobe')
+        if ffprobe_path is not None:
+            ffmpeg_data['ffprobe'] = str(ffprobe_path)
+        if ffmpeg_data:
+            binaries_data['ffmpeg'] = ffmpeg_data
         else:
-            binaries_data['handbrake'] = args.handbrake_path
-        
-        # Download FFmpeg
-        if not args.ffmpeg_path and not args.ffprobe_path:
-            print("\nDownloading FFmpeg...")
-            ffmpeg_bins = download_ffmpeg(target_platform, download_dir)
-            if ffmpeg_bins:
-                ffmpeg_data = {}
-                ffmpeg_path = ffmpeg_bins.get('ffmpeg')
-                if ffmpeg_path is not None:
-                    ffmpeg_data['ffmpeg'] = str(ffmpeg_path)
-                ffprobe_path = ffmpeg_bins.get('ffprobe')
-                if ffprobe_path is not None:
-                    ffmpeg_data['ffprobe'] = str(ffprobe_path)
-                if ffmpeg_data:
-                    binaries_data['ffmpeg'] = ffmpeg_data
-        else:
-            if args.ffmpeg_path and args.ffprobe_path:
-                binaries_data['ffmpeg'] = {
-                    'ffmpeg': args.ffmpeg_path,
-                    'ffprobe': args.ffprobe_path
-                }
-            elif args.ffmpeg_path or args.ffprobe_path:
-                print("Warning: Both --ffmpeg-path and --ffprobe-path must be provided together")
+            print("\n[FAILED] FFmpeg download failed - no binaries found!")
+            sys.exit(1)
+    else:
+        print("\n[FAILED] FFmpeg download failed!")
+        sys.exit(1)
+    
+    # Verify we have all required binaries
+    if 'handbrake' not in binaries_data:
+        print("\n[FAILED] No HandBrakeCLI binary available for bundling")
+        sys.exit(1)
+    if 'ffmpeg' not in binaries_data:
+        print("\n[FAILED] No FFmpeg binaries available for bundling")
+        sys.exit(1)
+    
+    print(f"\n[SUCCESS] All binaries ready for bundling:")
+    print(f"  HandBrakeCLI: {binaries_data.get('handbrake')}")
+    if isinstance(binaries_data.get('ffmpeg'), dict):
+        print(f"  ffmpeg: {binaries_data['ffmpeg'].get('ffmpeg')}")
+        print(f"  ffprobe: {binaries_data['ffmpeg'].get('ffprobe')}")
     
     # Create spec files for both CLI and GUI versions
     print("\nCreating PyInstaller spec files...")
@@ -453,7 +454,7 @@ def main():
     # CLI version with console (always runs in background mode)
     spec_file_cli = create_spec_file(
         target_platform, 
-        binaries_data if not args.skip_download else None,
+        binaries_data,
         script_name='convert_videos_cli.py',
         exe_name='convert_videos_cli',
         console=True
@@ -462,7 +463,7 @@ def main():
     # GUI version without console
     spec_file_gui = create_spec_file(
         target_platform,
-        binaries_data if not args.skip_download else None,
+        binaries_data,
         script_name='convert_videos_gui.py',
         exe_name='convert_videos_gui',
         console=False
