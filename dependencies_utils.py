@@ -242,8 +242,8 @@ def download_handbrake(tmpdir, download_dir):
     # HandBrake CLI download URLs
     urls = {
         'windows': f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-win-x86_64.zip',
-        'linux': "https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-x86_64.flatpak",
-        'macos': "https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}.dmg"
+        'linux': f"https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-x86_64.flatpak",
+        'macos': f"https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}.dmg"
     }
 
     platform_name = get_platform()
@@ -320,7 +320,7 @@ def download_ffmpeg(tmpdir, download_dir):
             for root, dirs, files in os.walk(ffmpeg_dir / 'ffprobe_extract'):
                 if 'ffprobe' in files:
                     shutil.copy(Path(root) / 'ffprobe', download_dir / 'ffprobe')
-                    ffprobe_bin = Path(root) / 'ffprobe'
+                    ffprobe_bin = download_dir / 'ffprobe'
                     break
         
         return ffmpeg_bin, ffprobe_bin
@@ -331,7 +331,7 @@ def download_ffmpeg(tmpdir, download_dir):
     archive_path = ffmpeg_dir / archive_name
     
     if not download_file(url, archive_path):
-        return None
+        return None, None
     
     extract_archive(archive_path, ffmpeg_dir)
     exe_suffix = '.exe' if platform_name == 'windows' else ''
@@ -345,7 +345,7 @@ def download_ffmpeg(tmpdir, download_dir):
             shutil.copy(Path(root) / f'ffprobe{exe_suffix}', download_dir / f'ffprobe{exe_suffix}')
             ffprobe_bin = download_dir / f'ffprobe{exe_suffix}'
     
-    return ffmpeg_bin,ffprobe_bin
+    return ffmpeg_bin, ffprobe_bin
 
 
 
