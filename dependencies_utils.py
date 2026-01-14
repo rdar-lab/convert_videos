@@ -255,8 +255,10 @@ def extract_dmg(dmg_path, extract_to):
         finally:
             # Always unmount the DMG
             logger.info("Unmounting DMG...")
-            subprocess.run(['hdiutil', 'detach', mount_point], 
-                         capture_output=True, timeout=10)
+            detach_result = subprocess.run(['hdiutil', 'detach', mount_point], 
+                         capture_output=True, timeout=10, text=True)
+            if detach_result.returncode != 0:
+                logger.error(f"Failed to unmount DMG: {detach_result.stderr}")
     except subprocess.TimeoutExpired:
         logger.error("Timeout while processing DMG file")
         return None
@@ -268,9 +270,9 @@ def extract_dmg(dmg_path, extract_to):
         if mount_point and os.path.exists(mount_point):
             try:
                 os.rmdir(mount_point)
-            except OSError:
+            except OSError as e:
                 # Directory might not be empty or already removed
-                pass
+                logger.debug(f"Could not remove temporary mount directory {mount_point}: {e}")
 
 
 def extract_archive(archive_path, extract_to):
