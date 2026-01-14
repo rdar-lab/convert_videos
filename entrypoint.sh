@@ -17,7 +17,8 @@ done
 TARGET_DIR=${ARGS[0]:-/data}
 
 # Build command with appropriate flags using array
-CMD_ARGS=('python3' '/usr/local/bin/convert_videos.py')
+# Use -u flag for unbuffered output so logs appear immediately in Docker
+CMD_ARGS=('python3' '-u' '/usr/local/bin/convert_videos.py')
 
 # Always run in background mode for Docker (no GUI)
 CMD_ARGS+=('--background')
