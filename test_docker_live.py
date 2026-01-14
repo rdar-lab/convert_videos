@@ -52,8 +52,7 @@ class TestDockerLive(unittest.TestCase):
     
     def _create_minimal_test_video(self, output_path: Path) -> bool:
         """
-        Create a minimal test video file using ffmpeg.
-        Falls back to static video if ffmpeg is not available.
+        Copy the static test video file to the output path.
         
         Args:
             output_path: Path where the video should be created
@@ -61,56 +60,29 @@ class TestDockerLive(unittest.TestCase):
         Returns:
             True if video was created successfully, False otherwise
         """
-        # Try to create video with ffmpeg (preferred - creates valid H.264 video)
         try:
-            # Create a 1-second, 16x16 black video with H.264 codec
-            cmd = [
-                'ffmpeg',
-                '-f', 'lavfi',
-                '-i', 'color=black:s=16x16:d=0.04',  # 16x16, 0.04 second (very short)
-                '-c:v', 'libx264',
-                '-pix_fmt', 'yuv420p',
-                '-y',  # Overwrite
-                str(output_path)
-            ]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
-                print(f"✓ Created test video using ffmpeg: {output_path.stat().st_size} bytes")
-                return True
-            else:
-                print(f"✗ ffmpeg failed: {result.stderr[:200] if result.stderr else 'unknown error'}")
-                
-        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-            print(f"⚠ ffmpeg not available: {e}")
-        
-        # Fallback: Try to copy from static test video (if it exists and is valid)
-        try:
+            # Get the static test video file from test_fixtures
             repo_path = Path(__file__).parent.absolute()
             static_video = repo_path / 'test_fixtures' / 'test_video.mp4'
             
-            if static_video.exists() and static_video.stat().st_size > 1000:
-                # Only use static video if it's reasonably sized (>1KB means it has content)
-                import shutil
-                shutil.copy2(static_video, output_path)
-                
-                if output_path.exists() and output_path.stat().st_size > 0:
-                    print(f"✓ Test video copied from static: {output_path.stat().st_size} bytes")
-                    return True
+            if not static_video.exists():
+                print(f"✗ Static test video not found: {static_video}")
+                return False
+            
+            # Copy the static test video to the output path
+            import shutil
+            shutil.copy2(static_video, output_path)
+            
+            if output_path.exists() and output_path.stat().st_size > 0:
+                print(f"✓ Test video copied: {output_path.stat().st_size} bytes")
+                return True
             else:
-                print(f"✗ Static test video not found or too small: {static_video}")
+                print(f"✗ Failed to copy test video")
+                return False
                 
         except Exception as e:
-            print(f"✗ Error with static video: {e}")
-        
-        print(f"✗ Failed to create test video - ffmpeg required")
-        return False
+            print(f"✗ Error creating test video: {e}")
+            return False
     
     def _build_docker_image(self, repo_path: Path, image_tag: str) -> bool:
         """
