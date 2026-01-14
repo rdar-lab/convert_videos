@@ -271,6 +271,39 @@ def find_system_binary(binary_name):
     return None
 
 
+def handle_ffmpeg_paths(args, ffmpeg_bin=None, ffprobe_bin=None):
+    """Handle ffmpeg/ffprobe paths from either args or system binaries.
+    
+    Args:
+        args: Parsed command line arguments
+        ffmpeg_bin: Optional path to ffmpeg binary (if found in system)
+        ffprobe_bin: Optional path to ffprobe binary (if found in system)
+    
+    Returns:
+        dict or None: Dictionary with ffmpeg and/or ffprobe paths, or None if nothing found
+    """
+    # If explicit paths provided via command line
+    if args.ffmpeg_path and args.ffprobe_path:
+        return {
+            'ffmpeg': args.ffmpeg_path,
+            'ffprobe': args.ffprobe_path
+        }
+    elif args.ffmpeg_path or args.ffprobe_path:
+        print("Warning: Both --ffmpeg-path and --ffprobe-path must be provided together")
+        return None
+    
+    # Otherwise use system binaries if provided
+    if ffmpeg_bin or ffprobe_bin:
+        ffmpeg_data = {}
+        if ffmpeg_bin:
+            ffmpeg_data['ffmpeg'] = ffmpeg_bin
+        if ffprobe_bin:
+            ffmpeg_data['ffprobe'] = ffprobe_bin
+        return ffmpeg_data
+    
+    return None
+
+
 def create_spec_file(platform_name, binaries_data, script_name='convert_videos.py', 
                     exe_name='convert_videos', console=True):
     """Create PyInstaller spec file for the application.
@@ -471,23 +504,19 @@ def main():
             print("\nDownloading FFmpeg...")
             ffmpeg_bins = download_ffmpeg(target_platform, download_dir)
             if ffmpeg_bins:
-                ffmpeg_data = {}
-                ffmpeg_path = ffmpeg_bins.get('ffmpeg')
-                if ffmpeg_path is not None:
-                    ffmpeg_data['ffmpeg'] = str(ffmpeg_path)
-                ffprobe_path = ffmpeg_bins.get('ffprobe')
-                if ffprobe_path is not None:
-                    ffmpeg_data['ffprobe'] = str(ffprobe_path)
+                ffmpeg_bin = ffmpeg_bins.get('ffmpeg')
+                ffprobe_bin = ffmpeg_bins.get('ffprobe')
+                ffmpeg_data = handle_ffmpeg_paths(
+                    args,
+                    ffmpeg_bin=str(ffmpeg_bin) if ffmpeg_bin else None,
+                    ffprobe_bin=str(ffprobe_bin) if ffprobe_bin else None
+                )
                 if ffmpeg_data:
                     binaries_data['ffmpeg'] = ffmpeg_data
         else:
-            if args.ffmpeg_path and args.ffprobe_path:
-                binaries_data['ffmpeg'] = {
-                    'ffmpeg': args.ffmpeg_path,
-                    'ffprobe': args.ffprobe_path
-                }
-            elif args.ffmpeg_path or args.ffprobe_path:
-                print("Warning: Both --ffmpeg-path and --ffprobe-path must be provided together")
+            ffmpeg_data = handle_ffmpeg_paths(args)
+            if ffmpeg_data:
+                binaries_data['ffmpeg'] = ffmpeg_data
     else:
         # When --skip-download is used, try to find system-installed binaries to bundle
         print("\nSkipping download, looking for system-installed binaries to bundle...")
@@ -503,27 +532,14 @@ def main():
             binaries_data['handbrake'] = args.handbrake_path
         
         # Try to find ffmpeg and ffprobe in system PATH
-        if not args.ffmpeg_path and not args.ffprobe_path:
-            ffmpeg_bin = find_system_binary('ffmpeg')
-            ffprobe_bin = find_system_binary('ffprobe')
-            
-            if ffmpeg_bin or ffprobe_bin:
-                ffmpeg_data = {}
-                if ffmpeg_bin:
-                    ffmpeg_data['ffmpeg'] = ffmpeg_bin
-                if ffprobe_bin:
-                    ffmpeg_data['ffprobe'] = ffprobe_bin
-                binaries_data['ffmpeg'] = ffmpeg_data
-            else:
-                print("Warning: ffmpeg/ffprobe not found in system PATH. Executable may not work without system installation.")
-        else:
-            if args.ffmpeg_path and args.ffprobe_path:
-                binaries_data['ffmpeg'] = {
-                    'ffmpeg': args.ffmpeg_path,
-                    'ffprobe': args.ffprobe_path
-                }
-            elif args.ffmpeg_path or args.ffprobe_path:
-                print("Warning: Both --ffmpeg-path and --ffprobe-path must be provided together")
+        ffmpeg_bin = find_system_binary('ffmpeg') if not args.ffmpeg_path else None
+        ffprobe_bin = find_system_binary('ffprobe') if not args.ffprobe_path else None
+        
+        ffmpeg_data = handle_ffmpeg_paths(args, ffmpeg_bin=ffmpeg_bin, ffprobe_bin=ffprobe_bin)
+        if ffmpeg_data:
+            binaries_data['ffmpeg'] = ffmpeg_data
+        elif not args.ffmpeg_path and not args.ffprobe_path:
+            print("Warning: ffmpeg/ffprobe not found in system PATH. Executable may not work without system installation.")
     
     # Create spec files for both CLI and GUI versions
     print("\nCreating PyInstaller spec files...")
