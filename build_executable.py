@@ -232,30 +232,42 @@ def download_ffmpeg(platform_name, download_dir):
 def find_system_binary(binary_name):
     """Find a binary in the system PATH using 'which' or 'where' command.
     
+    For HandBrakeCLI, tries both 'HandBrakeCLI' and 'handbrakecli' (case variations).
+    
     Args:
         binary_name: Name of the binary to find (e.g., 'HandBrakeCLI', 'ffmpeg')
     
     Returns:
         str: Full path to the binary if found, None otherwise
     """
-    try:
-        # Use 'where' on Windows, 'which' on Unix-like systems
-        if platform.system() == 'Windows':
-            result = subprocess.run(['where', binary_name], 
-                                  capture_output=True, text=True, timeout=5)
-        else:
-            result = subprocess.run(['which', binary_name], 
-                                  capture_output=True, text=True, timeout=5)
-        
-        if result.returncode == 0:
-            # Get the first line (first match) and strip whitespace
-            binary_path = result.stdout.strip().split('\n')[0]
-            if binary_path and Path(binary_path).exists():
-                print(f"Found system binary {binary_name}: {binary_path}")
-                return binary_path
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
-        print(f"Could not find {binary_name} in system PATH: {e}")
+    # List of names to try (in order)
+    names_to_try = [binary_name]
     
+    # For HandBrakeCLI, also try lowercase variant used by some package managers
+    if binary_name == 'HandBrakeCLI':
+        names_to_try.append('handbrakecli')
+    
+    for name in names_to_try:
+        try:
+            # Use 'where' on Windows, 'which' on Unix-like systems
+            if platform.system() == 'Windows':
+                result = subprocess.run(['where', name], 
+                                      capture_output=True, text=True, timeout=5)
+            else:
+                result = subprocess.run(['which', name], 
+                                      capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0:
+                # Get the first line (first match) and strip whitespace
+                binary_path = result.stdout.strip().split('\n')[0]
+                if binary_path and Path(binary_path).exists():
+                    print(f"Found system binary {binary_name} as {name}: {binary_path}")
+                    return binary_path
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+            # Continue to next variant
+            pass
+    
+    print(f"Could not find {binary_name} in system PATH (tried: {', '.join(names_to_try)})")
     return None
 
 
