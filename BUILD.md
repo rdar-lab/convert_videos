@@ -48,10 +48,12 @@ The executable package includes:
 
 ### Skip Downloading External Binaries
 
-If you want to rely on system-installed tools:
+If you want to use system-installed tools instead of downloading them:
 ```bash
 python build_executable.py --skip-download
 ```
+
+**Note**: When using `--skip-download`, the build script will automatically search for and bundle system-installed binaries (HandBrakeCLI, ffmpeg, ffprobe) found in your PATH. This ensures the standalone executable includes all dependencies even when not downloading them.
 
 ### Provide Custom Binary Paths
 

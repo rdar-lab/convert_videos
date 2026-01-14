@@ -229,6 +229,36 @@ def download_ffmpeg(platform_name, download_dir):
     return {'ffmpeg': ffmpeg_bin, 'ffprobe': ffprobe_bin}
 
 
+def find_system_binary(binary_name):
+    """Find a binary in the system PATH using 'which' or 'where' command.
+    
+    Args:
+        binary_name: Name of the binary to find (e.g., 'HandBrakeCLI', 'ffmpeg')
+    
+    Returns:
+        str: Full path to the binary if found, None otherwise
+    """
+    try:
+        # Use 'where' on Windows, 'which' on Unix-like systems
+        if platform.system() == 'Windows':
+            result = subprocess.run(['where', binary_name], 
+                                  capture_output=True, text=True, timeout=5)
+        else:
+            result = subprocess.run(['which', binary_name], 
+                                  capture_output=True, text=True, timeout=5)
+        
+        if result.returncode == 0:
+            # Get the first line (first match) and strip whitespace
+            binary_path = result.stdout.strip().split('\n')[0]
+            if binary_path and Path(binary_path).exists():
+                print(f"Found system binary {binary_name}: {binary_path}")
+                return binary_path
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        print(f"Could not find {binary_name} in system PATH: {e}")
+    
+    return None
+
+
 def create_spec_file(platform_name, binaries_data, script_name='convert_videos.py', 
                     exe_name='convert_videos', console=True):
     """Create PyInstaller spec file for the application.
@@ -446,6 +476,42 @@ def main():
                 }
             elif args.ffmpeg_path or args.ffprobe_path:
                 print("Warning: Both --ffmpeg-path and --ffprobe-path must be provided together")
+    else:
+        # When --skip-download is used, try to find system-installed binaries to bundle
+        print("\nSkipping download, looking for system-installed binaries to bundle...")
+        
+        # Try to find HandBrakeCLI in system PATH
+        if not args.handbrake_path:
+            handbrake_bin = find_system_binary('HandBrakeCLI')
+            if handbrake_bin:
+                binaries_data['handbrake'] = handbrake_bin
+            else:
+                print("Warning: HandBrakeCLI not found in system PATH. Executable may not work without system installation.")
+        else:
+            binaries_data['handbrake'] = args.handbrake_path
+        
+        # Try to find ffmpeg and ffprobe in system PATH
+        if not args.ffmpeg_path and not args.ffprobe_path:
+            ffmpeg_bin = find_system_binary('ffmpeg')
+            ffprobe_bin = find_system_binary('ffprobe')
+            
+            if ffmpeg_bin or ffprobe_bin:
+                ffmpeg_data = {}
+                if ffmpeg_bin:
+                    ffmpeg_data['ffmpeg'] = ffmpeg_bin
+                if ffprobe_bin:
+                    ffmpeg_data['ffprobe'] = ffprobe_bin
+                binaries_data['ffmpeg'] = ffmpeg_data
+            else:
+                print("Warning: ffmpeg/ffprobe not found in system PATH. Executable may not work without system installation.")
+        else:
+            if args.ffmpeg_path and args.ffprobe_path:
+                binaries_data['ffmpeg'] = {
+                    'ffmpeg': args.ffmpeg_path,
+                    'ffprobe': args.ffprobe_path
+                }
+            elif args.ffmpeg_path or args.ffprobe_path:
+                print("Warning: Both --ffmpeg-path and --ffprobe-path must be provided together")
     
     # Create spec files for both CLI and GUI versions
     print("\nCreating PyInstaller spec files...")
@@ -453,7 +519,7 @@ def main():
     # CLI version with console (always runs in background mode)
     spec_file_cli = create_spec_file(
         target_platform, 
-        binaries_data if not args.skip_download else None,
+        binaries_data,  # Always pass binaries_data, even if empty
         script_name='convert_videos_cli.py',
         exe_name='convert_videos_cli',
         console=True
@@ -462,7 +528,7 @@ def main():
     # GUI version without console
     spec_file_gui = create_spec_file(
         target_platform,
-        binaries_data if not args.skip_download else None,
+        binaries_data,  # Always pass binaries_data, even if empty
         script_name='convert_videos_gui.py',
         exe_name='convert_videos_gui',
         console=False
