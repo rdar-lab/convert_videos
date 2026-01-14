@@ -4,11 +4,6 @@ name: Docker Live Integration Tests
 # It performs resource-intensive Docker integration tests
 on:
   workflow_dispatch:  # Manual trigger only
-    inputs:
-      timeout:
-        description: 'Test timeout in seconds'
-        required: false
-        default: '180'
 
 jobs:
   docker-live-test:
@@ -45,8 +40,6 @@ jobs:
       run: |
         pytest test_docker_live.py -v -s
       timeout-minutes: 10
-      env:
-        DOCKER_TEST_TIMEOUT: ${{ github.event.inputs.timeout || '180' }}
     
     - name: Show test artifacts on failure
       if: failure()

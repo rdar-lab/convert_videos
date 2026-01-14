@@ -63,7 +63,7 @@ class TestDockerLive(unittest.TestCase):
         # Try to use ffmpeg to create a proper video
         try:
             # Create a 1-second test video with minimal settings
-            # This creates an H.264 video that's about 50-100KB
+            # This creates an H.264 video that's typically 5-15KB
             cmd = [
                 'ffmpeg',
                 '-f', 'lavfi',
