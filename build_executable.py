@@ -390,12 +390,6 @@ def main():
     parser = argparse.ArgumentParser(description='Build portable executable for convert_videos')
     parser.add_argument('--platform', choices=['windows', 'linux', 'macos'],
                         help='Target platform (default: auto-detect)')
-    parser.add_argument('--handbrake-path', type=str,
-                        help='Path to HandBrakeCLI binary to bundle (optional, will download if not provided)')
-    parser.add_argument('--ffmpeg-path', type=str,
-                        help='Path to ffmpeg binary to bundle (must provide with --ffprobe-path)')
-    parser.add_argument('--ffprobe-path', type=str,
-                        help='Path to ffprobe binary to bundle (must provide with --ffmpeg-path)')
     
     args = parser.parse_args()
     
@@ -406,59 +400,38 @@ def main():
     # Install PyInstaller
     install_pyinstaller()
     
-    # Always download or use provided binaries - no skip option
+    # Always download dependencies
     binaries_data = {}
     download_dir = Path('external_binaries')
     download_dir.mkdir(exist_ok=True)
     
-    # Download HandBrake (or use provided path)
-    if not args.handbrake_path:
-        print("\nDownloading HandBrakeCLI...")
-        handbrake_bin = download_handbrake(target_platform, download_dir)
-        if handbrake_bin:
-            binaries_data['handbrake'] = str(handbrake_bin)
-        else:
-            print("\n[FAILED] HandBrakeCLI download failed!")
-            sys.exit(1)
+    # Download HandBrakeCLI
+    print("\nDownloading HandBrakeCLI...")
+    handbrake_bin = download_handbrake(target_platform, download_dir)
+    if handbrake_bin:
+        binaries_data['handbrake'] = str(handbrake_bin)
     else:
-        if not Path(args.handbrake_path).exists():
-            print(f"\n[FAILED] Provided HandBrakeCLI path does not exist: {args.handbrake_path}")
-            sys.exit(1)
-        binaries_data['handbrake'] = args.handbrake_path
+        print("\n[FAILED] HandBrakeCLI download failed!")
+        sys.exit(1)
     
-    # Download FFmpeg (or use provided paths)
-    if not args.ffmpeg_path and not args.ffprobe_path:
-        print("\nDownloading FFmpeg...")
-        ffmpeg_bins = download_ffmpeg(target_platform, download_dir)
-        if ffmpeg_bins:
-            ffmpeg_data = {}
-            ffmpeg_path = ffmpeg_bins.get('ffmpeg')
-            if ffmpeg_path is not None:
-                ffmpeg_data['ffmpeg'] = str(ffmpeg_path)
-            ffprobe_path = ffmpeg_bins.get('ffprobe')
-            if ffprobe_path is not None:
-                ffmpeg_data['ffprobe'] = str(ffprobe_path)
-            if ffmpeg_data:
-                binaries_data['ffmpeg'] = ffmpeg_data
-            else:
-                print("\n[FAILED] FFmpeg download failed - no binaries found!")
-                sys.exit(1)
+    # Download FFmpeg
+    print("\nDownloading FFmpeg...")
+    ffmpeg_bins = download_ffmpeg(target_platform, download_dir)
+    if ffmpeg_bins:
+        ffmpeg_data = {}
+        ffmpeg_path = ffmpeg_bins.get('ffmpeg')
+        if ffmpeg_path is not None:
+            ffmpeg_data['ffmpeg'] = str(ffmpeg_path)
+        ffprobe_path = ffmpeg_bins.get('ffprobe')
+        if ffprobe_path is not None:
+            ffmpeg_data['ffprobe'] = str(ffprobe_path)
+        if ffmpeg_data:
+            binaries_data['ffmpeg'] = ffmpeg_data
         else:
-            print("\n[FAILED] FFmpeg download failed!")
+            print("\n[FAILED] FFmpeg download failed - no binaries found!")
             sys.exit(1)
-    elif args.ffmpeg_path and args.ffprobe_path:
-        if not Path(args.ffmpeg_path).exists():
-            print(f"\n[FAILED] Provided ffmpeg path does not exist: {args.ffmpeg_path}")
-            sys.exit(1)
-        if not Path(args.ffprobe_path).exists():
-            print(f"\n[FAILED] Provided ffprobe path does not exist: {args.ffprobe_path}")
-            sys.exit(1)
-        binaries_data['ffmpeg'] = {
-            'ffmpeg': args.ffmpeg_path,
-            'ffprobe': args.ffprobe_path
-        }
     else:
-        print("\n[FAILED] Both --ffmpeg-path and --ffprobe-path must be provided together")
+        print("\n[FAILED] FFmpeg download failed!")
         sys.exit(1)
     
     # Verify we have all required binaries
