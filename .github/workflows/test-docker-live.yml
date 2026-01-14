@@ -27,6 +27,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
     
+    - name: Install ffmpeg
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+    
     - name: Run Docker live integration test
       run: |
         pytest test_docker_live.py -v -s -m docker
