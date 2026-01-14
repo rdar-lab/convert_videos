@@ -346,13 +346,14 @@ def download_handbrake(tmpdir, download_dir):
         if not download_file(url, archive_path):
             return None
         
-        # Extract HandBrakeCLI from DMG (extract_archive handles DMG internally)
-        extract_archive(archive_path, download_dir)
+        # Extract HandBrakeCLI from DMG to temp directory (extract_archive handles DMG internally)
+        extract_archive(archive_path, handbrake_dir)
         
-        # HandBrakeCLI should now be in download_dir
-        cli_path = download_dir / 'HandBrakeCLI'
-        if cli_path.exists():
-            return cli_path
+        # Find HandBrakeCLI in extracted files
+        for root, dirs, files in os.walk(handbrake_dir):
+            if 'HandBrakeCLI' in files:
+                shutil.copy(Path(root) / 'HandBrakeCLI', download_dir / 'HandBrakeCLI')
+                return download_dir / 'HandBrakeCLI'
             
     elif platform_name == 'linux':
         # Linux: HandBrake CLI is not available as a simple download
