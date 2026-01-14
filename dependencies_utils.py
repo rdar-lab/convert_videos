@@ -500,7 +500,19 @@ def download_dependencies(deps_dir, progress_callback=None):
 
             handbrake_path = download_handbrake(tmpdir, deps_dir)
             if handbrake_path is None:
-                raise Exception('Was unable to download handbrake') 
+                # On Linux, try to find system-installed HandBrakeCLI
+                if system == "Linux":
+                    logger.info("Download not available on Linux, checking for system-installed HandBrakeCLI...")
+                    system_handbrake = shutil.which('HandBrakeCLI')
+                    if system_handbrake:
+                        # Copy system binary to deps_dir for bundling
+                        handbrake_path = deps_dir / 'HandBrakeCLI'
+                        shutil.copy2(system_handbrake, handbrake_path)
+                        logger.info(f"Using system HandBrakeCLI from: {system_handbrake}")
+                    else:
+                        raise Exception('HandBrakeCLI not found. Please install via: sudo apt-get install handbrake-cli')
+                else:
+                    raise Exception('Was unable to download handbrake') 
 
             # Download ffmpeg (includes ffprobe)
             msg = f"Downloading ffmpeg/ffprobe for {system}..."
@@ -508,9 +520,26 @@ def download_dependencies(deps_dir, progress_callback=None):
                 progress_callback(msg)
             logger.info(msg)
 
-            ffmpeg_path,ffprobe_path = download_ffmpeg(tmpdir, deps_dir)
+            ffmpeg_path, ffprobe_path = download_ffmpeg(tmpdir, deps_dir)
             if ffmpeg_path is None or ffprobe_path is None:
-                raise Exception('Was unable to download ffmpeg') 
+                # On Linux, try to find system-installed ffmpeg/ffprobe
+                if system == "Linux":
+                    logger.info("Download not available, checking for system-installed ffmpeg/ffprobe...")
+                    system_ffmpeg = shutil.which('ffmpeg')
+                    system_ffprobe = shutil.which('ffprobe')
+                    
+                    if system_ffmpeg and system_ffprobe:
+                        # Copy system binaries to deps_dir for bundling
+                        ffmpeg_path = deps_dir / 'ffmpeg'
+                        ffprobe_path = deps_dir / 'ffprobe'
+                        shutil.copy2(system_ffmpeg, ffmpeg_path)
+                        shutil.copy2(system_ffprobe, ffprobe_path)
+                        logger.info(f"Using system ffmpeg from: {system_ffmpeg}")
+                        logger.info(f"Using system ffprobe from: {system_ffprobe}")
+                    else:
+                        raise Exception('ffmpeg/ffprobe not found. Please install via: sudo apt-get install ffmpeg')
+                else:
+                    raise Exception('Was unable to download ffmpeg') 
 
         # Make executables executable on Unix-like systems
         if system in ["Linux", "Darwin"]:
