@@ -223,7 +223,6 @@ def post_process_configuration(config, args):
     config['output']['preset'] = encoder_preset
     config['output']['quality'] = quality
 
-
     config['directory'] = args.directory if args and args.directory else config.get('directory')
    
     # Validate directory

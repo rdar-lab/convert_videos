@@ -7,7 +7,6 @@ import logging
 import os
 import platform
 import queue
-import re
 import subprocess
 import threading
 import tkinter as tk
