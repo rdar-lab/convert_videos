@@ -230,42 +230,30 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
             ])
 
         # Run with lower priority on Windows and Linux
+        # Helper function to choose between progress-aware and regular subprocess calls
+        def run_subprocess(cmd_args, **extra_kwargs):
+            if progress_callback or cancellation_check:
+                subprocess_utils.run_command_with_progress(
+                    cmd_args,
+                    progress_callback=progress_callback,
+                    cancellation_check=cancellation_check,
+                    **extra_kwargs
+                )
+            else:
+                subprocess_utils.run_command(cmd_args, check=True, **extra_kwargs)
+
         if sys.platform == 'win32':
             # Windows: Use BELOW_NORMAL_PRIORITY_CLASS (0x00004000)
             BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
-            if progress_callback or cancellation_check:
-                # Use progress-aware subprocess call
-                subprocess_utils.run_command_with_progress(
-                    cmd, 
-                    progress_callback=progress_callback,
-                    cancellation_check=cancellation_check,
-                    creationflags=BELOW_NORMAL_PRIORITY_CLASS
-                )
-            else:
-                subprocess_utils.run_command(cmd, check=True,
-                                             creationflags=BELOW_NORMAL_PRIORITY_CLASS)
+            run_subprocess(cmd, creationflags=BELOW_NORMAL_PRIORITY_CLASS)
         else:
             # Linux/Unix: Try to use nice if available, otherwise run without it
             try:
                 command_args = ['nice', '-n', '10'] + cmd
-                if progress_callback or cancellation_check:
-                    subprocess_utils.run_command_with_progress(
-                        command_args,
-                        progress_callback=progress_callback,
-                        cancellation_check=cancellation_check
-                    )
-                else:
-                    subprocess_utils.run_command(command_args, check=True)
+                run_subprocess(command_args)
             except FileNotFoundError:
                 # nice not available, run without it
-                if progress_callback or cancellation_check:
-                    subprocess_utils.run_command_with_progress(
-                        cmd,
-                        progress_callback=progress_callback,
-                        cancellation_check=cancellation_check
-                    )
-                else:
-                    subprocess_utils.run_command(cmd, check=True)
+                run_subprocess(cmd)
 
         # Validate and finalize
         return validate_and_finalize(input_path, temp_output, output_path, preserve_original, dependency_config)

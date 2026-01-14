@@ -169,7 +169,7 @@ def run_command_with_progress(command_args, progress_callback=None, progress_pat
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
-                raise Exception("Operation cancelled by user")
+                raise InterruptedError("Operation cancelled by user")
             
             # Extract and report progress
             if progress_callback and progress_pattern:
@@ -192,7 +192,7 @@ def run_command_with_progress(command_args, progress_callback=None, progress_pat
             args=command_args,
             returncode=return_code,
             stdout=stdout,
-            stderr=None  # stderr was merged into stdout
+            stderr=''  # stderr was merged into stdout
         )
         
         # Log results
