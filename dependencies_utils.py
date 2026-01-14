@@ -520,14 +520,14 @@ def download_dependencies(deps_dir, progress_callback=None):
                 progress_callback(msg)
             logger.info(msg)
 
-            ffmpeg_path, ffprobe_path = download_ffmpeg(tmpdir, deps_dir)
+            ffmpeg_path,ffprobe_path = download_ffmpeg(tmpdir, deps_dir)
             if ffmpeg_path is None or ffprobe_path is None:
                 # On Linux, try to find system-installed ffmpeg/ffprobe
                 if system == "Linux":
                     logger.info("Download not available, checking for system-installed ffmpeg/ffprobe...")
                     system_ffmpeg = shutil.which('ffmpeg')
                     system_ffprobe = shutil.which('ffprobe')
-                    
+
                     if system_ffmpeg and system_ffprobe:
                         # Copy system binaries to deps_dir for bundling
                         ffmpeg_path = deps_dir / 'ffmpeg'
