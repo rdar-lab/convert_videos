@@ -233,14 +233,14 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         # Helper function to choose between progress-aware and regular subprocess calls
         def run_subprocess(cmd_args, **extra_kwargs):
             if progress_callback or cancellation_check:
-                subprocess_utils.run_command_with_progress(
+                return subprocess_utils.run_command_with_progress(
                     cmd_args,
                     progress_callback=progress_callback,
                     cancellation_check=cancellation_check,
                     **extra_kwargs
                 )
             else:
-                subprocess_utils.run_command(cmd_args, check=True, **extra_kwargs)
+                return subprocess_utils.run_command(cmd_args, check=True, **extra_kwargs)
 
         if sys.platform == 'win32':
             # Windows: Use BELOW_NORMAL_PRIORITY_CLASS (0x00004000)

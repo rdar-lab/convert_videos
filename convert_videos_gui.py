@@ -888,11 +888,11 @@ class VideoConverterGUI:
             )
             return success
 
+        except InterruptedError as e:
+            # User cancelled the operation
+            logger.info(f"Conversion cancelled for {input_path}: {e}")
+            return False
         except Exception as e:
-            # Check if this was a cancellation
-            if self.stop_requested or "cancelled" in str(e).lower():
-                logger.info(f"Conversion cancelled for {input_path}")
-                return False
             logger.error(f"Conversion error: {repr(e)}")
             return False
 
