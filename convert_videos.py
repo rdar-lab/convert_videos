@@ -132,7 +132,7 @@ def find_eligible_files(target_dir, min_size_bytes=None, dependency_config=None)
     return [f[1] for f in eligible_files]
 
 
-def convert_file(input_path, dry_run=False, preserve_original=False, output_config=None, dependency_config=None):
+def convert_file(input_path, dry_run=False, preserve_original=False, output_config=None, dependency_config=None, progress_callback=None, cancellation_check=None):
     """Convert a video file using HandBrakeCLI with a configurable encoder.
 
     By default, uses an H.265 (HEVC) encoder, but the encoder, container
@@ -145,6 +145,8 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         preserve_original: If True, keep original file after conversion
         output_config: Dict with output settings (format, encoder, preset, quality)
         dependency_config: Dict with dependency paths (handbrake, ffprobe)
+        progress_callback: Optional callback function(percentage: float) for progress updates
+        cancellation_check: Optional callback function() -> bool to check if operation should be cancelled
     """
     input_path = Path(input_path)
 
@@ -231,16 +233,31 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
         if sys.platform == 'win32':
             # Windows: Use BELOW_NORMAL_PRIORITY_CLASS (0x00004000)
             BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
-            subprocess_utils.run_command(cmd, check=True,
-                                         creationflags=BELOW_NORMAL_PRIORITY_CLASS)
+            subprocess_utils.run_command(
+                cmd,
+                progress_callback=progress_callback,
+                cancellation_check=cancellation_check,
+                check=True,
+                creationflags=BELOW_NORMAL_PRIORITY_CLASS
+            )
         else:
             # Linux/Unix: Try to use nice if available, otherwise run without it
             try:
                 command_args = ['nice', '-n', '10'] + cmd
-                subprocess_utils.run_command(command_args, check=True)
+                subprocess_utils.run_command(
+                    command_args,
+                    progress_callback=progress_callback,
+                    cancellation_check=cancellation_check,
+                    check=True
+                )
             except FileNotFoundError:
                 # nice not available, run without it
-                subprocess_utils.run_command(cmd, check=True)
+                subprocess_utils.run_command(
+                    cmd,
+                    progress_callback=progress_callback,
+                    cancellation_check=cancellation_check,
+                    check=True
+                )
 
         # Validate and finalize
         return validate_and_finalize(input_path, temp_output, output_path, preserve_original, dependency_config)
