@@ -29,10 +29,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python convert_videos.py --config config.yaml     # Run with config (background mode)
-  python convert_videos.py /path/to/videos
-  python convert_videos.py --dry-run C:\\Videos
-  python convert_videos.py --loop /path/to/videos
+  python convert_videos_cli.py --config config.yaml     # Run with config (background mode)
+  python convert_videos_cli.py /path/to/videos
+  python convert_videos_cli.py --dry-run C:\\Videos
+  python convert_videos_cli.py --loop /path/to/videos
         """
     )
     parser.add_argument('directory',

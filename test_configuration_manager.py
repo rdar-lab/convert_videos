@@ -5,9 +5,7 @@ Unit tests for configuration_manager.py
 
 import os
 import unittest
-from unittest.mock import patch, MagicMock
 import tempfile
-from pathlib import Path
 import yaml
 
 # Import the module to test

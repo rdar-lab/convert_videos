@@ -104,7 +104,7 @@ class TestRunCommand(unittest.TestCase):
         def progress_callback(percentage):
             progress_updates.append(percentage)
         
-        result = subprocess_utils.run_command(
+        subprocess_utils.run_command(
             ['test_command'],
             progress_callback=progress_callback,
             progress_pattern=r'Progress: ([0-9.]+)%'

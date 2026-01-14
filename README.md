@@ -187,7 +187,7 @@ pip3 install -r requirements.txt
 **Run the script:**
 ```bash
 # Run with GUI:
-python3 convert_video_guis.py
+python3 convert_videos_gui.py
 
 # Run with directory (background mode):
 python3 convert_videos.py /path/to/videos
