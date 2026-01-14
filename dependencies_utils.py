@@ -223,11 +223,15 @@ def extract_dmg(dmg_path, extract_to):
     Returns:
         Path to extracted HandBrakeCLI binary, or None if extraction failed
     """
+    mount_point = None
     try:
+        # Create a unique temporary mount point
+        mount_point = tempfile.mkdtemp(prefix='handbrake_mount_')
+        
         # Mount the DMG
         logger.info(f"Mounting DMG: {dmg_path}")
         result = subprocess.run(
-            ['hdiutil', 'attach', '-nobrowse', '-mountpoint', '/tmp/handbrake_mount', str(dmg_path)],
+            ['hdiutil', 'attach', '-nobrowse', '-mountpoint', mount_point, str(dmg_path)],
             capture_output=True,
             text=True,
             timeout=30
@@ -239,7 +243,7 @@ def extract_dmg(dmg_path, extract_to):
         
         try:
             # Look for HandBrakeCLI in the mounted app bundle
-            app_path = Path('/tmp/handbrake_mount/HandBrake.app/Contents/MacOS/HandBrakeCLI')
+            app_path = Path(mount_point) / 'HandBrake.app' / 'Contents' / 'MacOS' / 'HandBrakeCLI'
             if app_path.exists():
                 dest_path = Path(extract_to) / 'HandBrakeCLI'
                 shutil.copy2(app_path, dest_path)
@@ -251,7 +255,7 @@ def extract_dmg(dmg_path, extract_to):
         finally:
             # Always unmount the DMG
             logger.info("Unmounting DMG...")
-            subprocess.run(['hdiutil', 'detach', '/tmp/handbrake_mount'], 
+            subprocess.run(['hdiutil', 'detach', mount_point], 
                          capture_output=True, timeout=10)
     except subprocess.TimeoutExpired:
         logger.error("Timeout while processing DMG file")
@@ -259,6 +263,14 @@ def extract_dmg(dmg_path, extract_to):
     except Exception as e:
         logger.error(f"Error extracting DMG: {repr(e)}")
         return None
+    finally:
+        # Clean up temporary mount point directory if it exists
+        if mount_point and os.path.exists(mount_point):
+            try:
+                os.rmdir(mount_point)
+            except OSError:
+                # Directory might not be empty or already removed
+                pass
 
 
 def extract_archive(archive_path, extract_to):
