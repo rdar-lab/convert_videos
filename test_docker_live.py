@@ -8,7 +8,7 @@ Note: These tests are resource-intensive and require:
 - Docker installation
 - Sufficient disk space
 
-Run with: pytest test_docker_live.py -v
+Run with: pytest test_docker_live.py -v -m docker
 """
 
 import platform
@@ -18,6 +18,11 @@ import time
 import unittest
 from pathlib import Path
 import yaml
+import pytest
+
+
+# Mark all tests in this module as 'docker' to exclude from default test runs
+pytestmark = pytest.mark.docker
 
 
 class TestDockerLive(unittest.TestCase):
@@ -47,10 +52,7 @@ class TestDockerLive(unittest.TestCase):
     
     def _create_minimal_test_video(self, output_path: Path) -> bool:
         """
-        Create a minimal test video file.
-        
-        This creates a very small H.264 video that can be converted to H.265.
-        Uses ffmpeg if available, otherwise creates a minimal video using raw data.
+        Copy the static test video file to the output path.
         
         Args:
             output_path: Path where the video should be created
@@ -58,104 +60,29 @@ class TestDockerLive(unittest.TestCase):
         Returns:
             True if video was created successfully, False otherwise
         """
-        # Try to use ffmpeg to create a proper video
         try:
-            # Create a 1-second test video with minimal settings
-            # This creates an H.264 video that's typically 5-15KB
-            cmd = [
-                'ffmpeg',
-                '-f', 'lavfi',
-                '-i', 'testsrc=duration=1:size=320x240:rate=1',
-                '-c:v', 'libx264',
-                '-preset', 'ultrafast',
-                '-crf', '40',
-                '-pix_fmt', 'yuv420p',
-                '-y',  # Overwrite output file
-                str(output_path)
-            ]
+            # Get the static test video file from test_fixtures
+            repo_path = Path(__file__).parent.absolute()
+            static_video = repo_path / 'test_fixtures' / 'test_video.mp4'
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
+            if not static_video.exists():
+                print(f"✗ Static test video not found: {static_video}")
+                return False
             
-            if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
-                print(f"✓ Created test video using ffmpeg: {output_path.stat().st_size} bytes")
+            # Copy the static test video to the output path
+            import shutil
+            shutil.copy2(static_video, output_path)
+            
+            if output_path.exists() and output_path.stat().st_size > 0:
+                print(f"✓ Test video copied: {output_path.stat().st_size} bytes")
                 return True
             else:
-                print(f"✗ ffmpeg failed: {result.stderr[:200]}")
+                print(f"✗ Failed to copy test video")
+                return False
                 
-        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-            print(f"✗ ffmpeg not available: {e}")
-        
-        # Fallback: Create a minimal valid MP4 file with real video data
-        # This is a minimal H.264-encoded MP4 that video tools should recognize
-        # Based on minimal MP4 structure with ftyp, mdat, moov boxes
-        minimal_mp4 = bytes([
-            # ftyp box (file type)
-            0x00, 0x00, 0x00, 0x20,  # box size = 32
-            0x66, 0x74, 0x79, 0x70,  # 'ftyp'
-            0x69, 0x73, 0x6F, 0x6D,  # 'isom' - major brand
-            0x00, 0x00, 0x02, 0x00,  # minor version
-            0x69, 0x73, 0x6F, 0x6D,  # compatible brands
-            0x69, 0x73, 0x6F, 0x32,
-            0x61, 0x76, 0x63, 0x31,
-            0x6D, 0x70, 0x34, 0x31,
-            
-            # mdat box (media data) - minimal
-            0x00, 0x00, 0x00, 0x08,  # box size = 8 (header only)
-            0x6D, 0x64, 0x61, 0x74,  # 'mdat'
-            
-            # moov box (movie/metadata)
-            0x00, 0x00, 0x00, 0x68,  # box size = 104
-            0x6D, 0x6F, 0x6F, 0x76,  # 'moov'
-            
-            # mvhd box (movie header)
-            0x00, 0x00, 0x00, 0x6C,  # box size
-            0x6D, 0x76, 0x68, 0x64,  # 'mvhd'
-            0x00, 0x00, 0x00, 0x00,  # version and flags
-            0x00, 0x00, 0x00, 0x00,  # creation time
-            0x00, 0x00, 0x00, 0x00,  # modification time
-            0x00, 0x00, 0x03, 0xE8,  # timescale = 1000
-            0x00, 0x00, 0x03, 0xE8,  # duration = 1000 (1 second)
-            0x00, 0x01, 0x00, 0x00,  # rate = 1.0
-            0x01, 0x00,              # volume = 1.0
-            0x00, 0x00,              # reserved
-            0x00, 0x00, 0x00, 0x00,  # reserved
-            0x00, 0x00, 0x00, 0x00,  # reserved
-            # transformation matrix (identity)
-            0x00, 0x01, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x01, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x40, 0x00, 0x00, 0x00,
-            # preview time, duration, poster time
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            # selection time, duration, current time
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x02,  # next track ID
-        ])
-        
-        try:
-            output_path.write_bytes(minimal_mp4)
-            if output_path.exists() and output_path.stat().st_size > 0:
-                print(f"✓ Created minimal MP4 file: {output_path.stat().st_size} bytes")
-                return True
         except Exception as e:
-            print(f"✗ Failed to create minimal MP4: {e}")
+            print(f"✗ Error creating test video: {e}")
             return False
-        
-        return False
     
     def _build_docker_image(self, repo_path: Path, image_tag: str) -> bool:
         """
@@ -339,7 +266,7 @@ class TestDockerLive(unittest.TestCase):
         # Remove container
         try:
             subprocess.run(
-                ['docker', 'rm', container_name],
+                ['docker', 'rm', '-f', container_name],
                 capture_output=True,
                 timeout=30
             )
@@ -358,7 +285,7 @@ class TestDockerLive(unittest.TestCase):
         
         try:
             subprocess.run(
-                ['docker', 'rmi', image_tag],
+                ['docker', 'rmi', '-f', image_tag],
                 capture_output=True,
                 timeout=30
             )
