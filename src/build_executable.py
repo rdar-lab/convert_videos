@@ -105,12 +105,20 @@ binaries = []
                 spec_content += f"binaries.append(({ffprobe_path}, '.'))\n"
 
     spec_content += f"""
+import os
+
+# Get absolute path to src directory for imports
+src_dir = os.path.abspath('src')
+
 a = Analysis(
     ['{script_name}'],
-    pathex=[],
+    pathex=[src_dir],
     binaries=binaries,
     datas=datas,
-    hiddenimports=['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk'],
+    hiddenimports=['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk',
+                   'configuration_manager', 'convert_videos', 'convert_videos_cli',
+                   'convert_videos_gui', 'dependencies_utils', 'duplicate_detector',
+                   'logging_utils', 'subprocess_utils', 'build_executable'],
     hookspath=[],
     hooksconfig={{}},
     runtime_hooks=[],
