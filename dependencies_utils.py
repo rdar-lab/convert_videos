@@ -191,7 +191,17 @@ def _is_within_directory(directory, target):
     """
     abs_directory = os.path.abspath(directory)
     abs_target = os.path.abspath(target)
-    return os.path.commonpath([abs_directory, abs_target]) == abs_directory
+    
+    # Ensure both paths are normalized
+    abs_directory = os.path.normpath(abs_directory)
+    abs_target = os.path.normpath(abs_target)
+    
+    # Check if target starts with directory path
+    # Add separator to avoid partial matches (e.g., /foo and /foobar)
+    if not abs_directory.endswith(os.path.sep):
+        abs_directory = abs_directory + os.path.sep
+    
+    return abs_target.startswith(abs_directory) or abs_target == abs_directory.rstrip(os.path.sep)
 
 
 def _safe_extract_tar(tar, extract_to):
@@ -226,7 +236,14 @@ def _safe_extract_dmg(mount_point, extract_to):
         
         # Normalize and validate the relative path doesn't contain .. components
         rel_dir_normalized = os.path.normpath(rel_dir)
+        
+        # Check if any path component is '..' which would indicate path traversal
         if rel_dir_normalized.startswith('..') or os.path.isabs(rel_dir_normalized):
+            raise RuntimeError(f"Attempted path traversal in DMG archive: {rel_dir}")
+        
+        # Also check if '..' appears in any component of the path
+        path_parts = Path(rel_dir_normalized).parts
+        if '..' in path_parts:
             raise RuntimeError(f"Attempted path traversal in DMG archive: {rel_dir}")
         
         # Create corresponding directory in extract_to
@@ -244,8 +261,11 @@ def _safe_extract_dmg(mount_point, extract_to):
         
         # Copy all files in this directory
         for file in files:
-            # Validate filename doesn't contain path separators
-            if os.path.sep in file or (os.path.altsep and os.path.altsep in file):
+            # Validate filename doesn't contain path separators, null bytes, or control characters
+            if (os.path.sep in file or 
+                (os.path.altsep and os.path.altsep in file) or
+                '\0' in file or
+                any(ord(c) < 32 for c in file)):
                 raise RuntimeError(f"Invalid filename in DMG archive: {file}")
             
             src_file = os.path.join(root, file)
