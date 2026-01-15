@@ -73,14 +73,6 @@ def create_spec_file(platform_name, binaries_data, script_name='convert_videos.p
         exe_name: Name for the output executable (default: 'convert_videos')
         console: Whether to show console window (default: True for CLI, False for GUI)
     """
-    # Discover all Python modules in src directory (exclude __init__.py and this build script)
-    src_dir = Path(__file__).parent
-    src_modules = []
-    for py_file in src_dir.glob('*.py'):
-        if py_file.name not in ['__init__.py', 'build_executable.py']:
-            module_name = py_file.stem
-            src_modules.append(module_name)
-    
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
@@ -112,24 +104,13 @@ binaries = []
                 ffprobe_path = repr(ffprobe_binary)
                 spec_content += f"binaries.append(({ffprobe_path}, '.'))\n"
 
-    # Build hiddenimports list - external packages plus src modules
-    hiddenimports_str = repr(['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk'] + src_modules)
-    
-    # Calculate the absolute path to src directory (relative to this build script)
-    # This path will be embedded in the spec file for PyInstaller to find imports
-    repo_root = Path(__file__).parent.parent
-    src_abs_path = str(repo_root / 'src')
-    
     spec_content += f"""
-# Absolute path to src directory for imports
-src_dir = {repr(src_abs_path)}
-
 a = Analysis(
     ['{script_name}'],
-    pathex=[src_dir],
+    pathex=[],
     binaries=binaries,
     datas=datas,
-    hiddenimports={hiddenimports_str},
+    hiddenimports=['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk'],
     hookspath=[],
     hooksconfig={{}},
     runtime_hooks=[],
@@ -171,7 +152,9 @@ exe = EXE(
 
     spec_content += ")\n"
 
-    spec_file = Path(f'{exe_name}.spec')
+    # Create spec file in the src directory (where this script is located)
+    src_dir = Path(__file__).parent
+    spec_file = src_dir / f'{exe_name}.spec'
     with open(spec_file, 'w') as f:
         f.write(spec_content)
 
@@ -180,11 +163,18 @@ exe = EXE(
 
 
 def build_with_pyinstaller(spec_file):
-    """Run PyInstaller with the spec file."""
+    """Run PyInstaller with the spec file.
+    
+    Runs from the src directory so all imports work naturally.
+    """
     logger.info(f"Building executable with PyInstaller...")
     try:
+        # Get the src directory (where this script is located)
+        src_dir = Path(__file__).parent
+        # Run PyInstaller from the src directory
         subprocess.check_call(
-            [sys.executable, '-m', 'PyInstaller', str(spec_file), '--clean', '--noconfirm'])
+            [sys.executable, '-m', 'PyInstaller', str(spec_file), '--clean', '--noconfirm'],
+            cwd=str(src_dir))
         logger.info("Build completed successfully!")
         return True
     except subprocess.CalledProcessError as e:
@@ -194,7 +184,9 @@ def build_with_pyinstaller(spec_file):
 
 def create_distribution_package(platform_name):
     """Create a distributable archive with the executables and necessary files."""
-    dist_dir = Path('dist')
+    # PyInstaller creates dist directory in src when run from src
+    src_dir = Path(__file__).parent
+    dist_dir = src_dir / 'dist'
     exe_extension = '.exe' if platform_name == 'windows' else ''
 
     # Check for both executables
@@ -223,10 +215,12 @@ def create_distribution_package(platform_name):
     else:
         logger.warning(f"GUI executable not found at {gui_exe_path}, skipping")
 
-    # Copy documentation files
+    # Copy documentation files from repo root
+    repo_root = src_dir.parent
     for doc in DOCS_TO_INCLUDE:
-        if Path(doc).exists():
-            shutil.copy2(doc, package_dir / doc)
+        doc_path = repo_root / doc
+        if doc_path.exists():
+            shutil.copy2(doc_path, package_dir / doc)
 
     # Create archive
     archive_name = f"{package_name}"
@@ -257,9 +251,10 @@ def main():
     # Install PyInstaller
     install_pyinstaller()
 
-    # Always download dependencies
+    # Always download dependencies to repo root
+    repo_root = Path(__file__).parent.parent
     binaries_data = {}
-    download_dir = Path('external_binaries')
+    download_dir = repo_root / 'external_binaries'
     download_dir.mkdir(exist_ok=True)
 
     handbrake_path, ffprobe_path, ffmpeg_path = dependencies_utils.download_dependencies(
@@ -326,11 +321,11 @@ def main():
     logger.info("[SUCCESS] Build completed successfully!")
     exe_extension = '.exe' if target_platform == 'windows' else ''
     logger.info(f"Executable locations:")
-    logger.info(f"  CLI: dist/convert_videos_cli{exe_extension}")
+    logger.info(f"  CLI: src/dist/convert_videos_cli{exe_extension}")
     if gui_success:
-        logger.info(f"  GUI: dist/convert_videos_gui{exe_extension}")
+        logger.info(f"  GUI: src/dist/convert_videos_gui{exe_extension}")
     logger.info(
-        f"Distribution package: dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
+        f"Distribution package: src/dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
 
 
 if __name__ == '__main__':
