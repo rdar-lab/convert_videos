@@ -6,7 +6,6 @@ Unit tests for duplicate_detector.py
 import unittest
 import tempfile
 import os
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from duplicate_detector import (
@@ -232,7 +231,7 @@ class TestScanForDuplicates(unittest.TestCase):
                                    ffmpeg_path='/usr/bin/ffmpeg', 
                                    ffprobe_path='/usr/bin/ffprobe',
                                    progress_callback=progress_cb)
-            except:
+            except Exception:
                 pass  # May fail due to mocking, but we're testing callback
             
             # Should have received progress messages

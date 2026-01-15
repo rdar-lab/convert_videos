@@ -5,8 +5,7 @@ Unit tests for convert_videos_cli.py
 
 import sys
 import unittest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch
 
 import convert_videos_cli
 

@@ -3,11 +3,9 @@
 Unit tests for build_executable.py
 """
 
-import platform
-import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open, call
+from unittest.mock import patch, MagicMock, mock_open
 
 import build_executable
 
@@ -231,7 +229,7 @@ class TestCreateDistributionPackage(unittest.TestCase):
         mock_dist.__truediv__ = MagicMock(side_effect=lambda x: mock_cli_exe if 'cli' in x else 
                                           (mock_gui_exe if 'gui' in x else mock_package_dir))
         
-        result = build_executable.create_distribution_package('windows')
+        build_executable.create_distribution_package('windows')
         
         # Should create zip archive for Windows
         mock_archive.assert_called_once()
@@ -262,7 +260,7 @@ class TestCreateDistributionPackage(unittest.TestCase):
         # Mock the / operator
         mock_dist.__truediv__ = MagicMock(side_effect=lambda x: mock_cli_exe if 'cli' in x else mock_package_dir)
         
-        result = build_executable.create_distribution_package('linux')
+        build_executable.create_distribution_package('linux')
         
         # Should create tar.gz archive for Linux
         mock_archive.assert_called_once()

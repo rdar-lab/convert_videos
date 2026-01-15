@@ -52,7 +52,7 @@ class VideoConverterGUI:
         self.root.geometry("1000x700")
 
         # Configuration
-        config, _ = configuration_manager.load_config()
+        self.config, _ = configuration_manager.load_config()
 
         self.config_file_path = Path('config.yaml')
 

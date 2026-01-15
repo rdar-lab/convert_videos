@@ -6,7 +6,6 @@ Unit tests for subprocess_utils.py
 import unittest
 from unittest.mock import patch, MagicMock
 import subprocess
-import sys
 
 # Import the module to test
 import subprocess_utils
@@ -141,7 +140,7 @@ class TestRunCommand(unittest.TestCase):
         def progress_callback(percentage):
             progress_updates.append(percentage)
         
-        result = subprocess_utils.run_command(
+        subprocess_utils.run_command(
             ['test_command'],
             progress_callback=progress_callback
         )

@@ -5,10 +5,8 @@ Unit tests for logging_utils.py
 
 import logging
 import os
-import sys
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import logging_utils
@@ -83,7 +81,7 @@ class TestSetupLogging(unittest.TestCase):
         # Mock Path.mkdir to always raise PermissionError
         with patch('logging_utils.Path.mkdir', side_effect=PermissionError("No permission")):
             with patch('sys.stderr', new=MagicMock()):
-                log_path = logging_utils.setup_logging('/invalid/path.log')
+                logging_utils.setup_logging('/invalid/path.log')
         
         # Should return None for console-only mode
         # But logging should still work
@@ -182,7 +180,7 @@ class TestSetupLogging(unittest.TestCase):
             with patch('logging_utils.logging.handlers.RotatingFileHandler', 
                       side_effect=PermissionError("Permission denied")):
                 with patch('sys.stderr', new=MagicMock()):
-                    log_path_result = logging_utils.setup_logging(log_path)
+                    logging_utils.setup_logging(log_path)
             
             # Should return None and still have console handler
             root_logger = logging.getLogger()
