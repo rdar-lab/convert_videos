@@ -23,8 +23,11 @@ class TestSetupLogging(unittest.TestCase):
     
     def tearDown(self):
         """Clean up after tests."""
-        # Clear handlers again
+        # Clear handlers again and close file handles to avoid Windows file locking issues
         root_logger = logging.getLogger()
+        for handler in root_logger.handlers[:]:
+            handler.close()
+            root_logger.removeHandler(handler)
         root_logger.handlers.clear()
     
     def test_setup_logging_default_path(self):
@@ -53,6 +56,12 @@ class TestSetupLogging(unittest.TestCase):
             
             self.assertEqual(log_path, custom_log_path)
             self.assertTrue(os.path.exists(custom_log_path))
+            
+            # Close handlers to release file locks (Windows compatibility)
+            root_logger = logging.getLogger()
+            for handler in root_logger.handlers[:]:
+                handler.close()
+                root_logger.removeHandler(handler)
     
     def test_setup_logging_creates_directory(self):
         """Test that logging setup creates missing directories."""
@@ -63,11 +72,22 @@ class TestSetupLogging(unittest.TestCase):
             self.assertEqual(log_path, nested_path)
             self.assertTrue(os.path.exists(nested_path))
             self.assertTrue(os.path.isdir(os.path.dirname(nested_path)))
+            
+            # Close handlers to release file locks (Windows compatibility)
+            root_logger = logging.getLogger()
+            for handler in root_logger.handlers[:]:
+                handler.close()
+                root_logger.removeHandler(handler)
     
     def test_setup_logging_invalid_path_fallback(self):
         """Test fallback to temp directory when log path is invalid."""
-        # Use an invalid path (root directory is typically not writable)
-        invalid_path = '/root/impossible/path/test.log'
+        # Use an invalid path that doesn't exist on any platform
+        # Windows: uses drive letters, Unix: uses /
+        import sys
+        if sys.platform == 'win32':
+            invalid_path = 'Z:\\impossible\\nonexistent\\path\\test.log'
+        else:
+            invalid_path = '/root/impossible/path/test.log'
         
         with patch('sys.stderr', new=MagicMock()):
             log_path = logging_utils.setup_logging(invalid_path)
@@ -146,6 +166,11 @@ class TestSetupLogging(unittest.TestCase):
             # Check rotation settings (10MB max, 5 backups)
             self.assertEqual(file_handler.maxBytes, 10 * 1024 * 1024)
             self.assertEqual(file_handler.backupCount, 5)
+            
+            # Close handlers to release file locks (Windows compatibility)
+            for handler in root_logger.handlers[:]:
+                handler.close()
+                root_logger.removeHandler(handler)
     
     def test_setup_logging_writes_to_file(self):
         """Test that logging actually writes to the file."""
@@ -167,6 +192,11 @@ class TestSetupLogging(unittest.TestCase):
             with open(log_path, 'r') as f:
                 content = f.read()
                 self.assertIn(test_message, content)
+            
+            # Close handlers to release file locks (Windows compatibility)
+            for handler in logger.handlers[:]:
+                handler.close()
+                logger.removeHandler(handler)
     
     def test_setup_logging_file_permission_error(self):
         """Test handling of permission errors when creating log file."""
