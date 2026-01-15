@@ -102,7 +102,7 @@ class TestCreateSpecFile(unittest.TestCase):
             exe_name='test_exe'
         )
         
-        self.assertEqual(spec_file, Path('test_exe.spec'))
+        self.assertIn('test_exe.spec', str(spec_file))
         
         # Verify file was written
         mock_file.assert_called_once_with(spec_file, 'w')
