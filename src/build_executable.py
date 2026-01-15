@@ -73,11 +73,11 @@ def create_spec_file(platform_name, binaries_data, script_name='convert_videos.p
         exe_name: Name for the output executable (default: 'convert_videos')
         console: Whether to show console window (default: True for CLI, False for GUI)
     """
-    # Discover all Python modules in src directory
+    # Discover all Python modules in src directory (exclude __init__.py and this build script)
     src_dir = Path(__file__).parent
     src_modules = []
     for py_file in src_dir.glob('*.py'):
-        if py_file.name != '__init__.py':
+        if py_file.name not in ['__init__.py', 'build_executable.py']:
             module_name = py_file.stem
             src_modules.append(module_name)
     
@@ -115,14 +115,12 @@ binaries = []
     # Build hiddenimports list - external packages plus src modules
     hiddenimports_str = repr(['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk'] + src_modules)
     
-    # Calculate the absolute path to src directory now (relative to repository root)
-    # The spec file will be created in the repository root, so src is a sibling directory
+    # Calculate the absolute path to src directory (relative to this build script)
+    # This path will be embedded in the spec file for PyInstaller to find imports
     repo_root = Path(__file__).parent.parent
     src_abs_path = str(repo_root / 'src')
     
     spec_content += f"""
-import os
-
 # Absolute path to src directory for imports
 src_dir = {repr(src_abs_path)}
 
