@@ -53,3 +53,4 @@ config.yaml
 external_binaries/
 
 dependencies/
+coverage.json
