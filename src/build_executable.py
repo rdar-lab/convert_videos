@@ -22,8 +22,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+import logging
 
 import dependencies_utils
+import logging_utils
 
 # Version constants for external tools
 HANDBRAKE_VERSION = '1.7.2'
@@ -32,6 +34,7 @@ FFMPEG_VERSION = '6.1'
 # Documentation files to include in distribution
 DOCS_TO_INCLUDE = ['README.md', 'LICENSE', 'config.yaml.example']
 
+logger = logging.getLogger(__main__)
 
 def get_platform():
     """Detect the current platform."""
@@ -50,13 +53,13 @@ def install_pyinstaller():
     """Install PyInstaller if not already installed."""
     try:
         import PyInstaller
-        print(
+        logger.info(
             f"PyInstaller is already installed (version {PyInstaller.__version__})")
     except ImportError:
-        print("Installing PyInstaller...")
+        logger.info("Installing PyInstaller...")
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install', 'pyinstaller'])
-        print("PyInstaller installed successfully")
+        logger.info("PyInstaller installed successfully")
 
 
 def create_spec_file(platform_name, binaries_data, script_name='convert_videos.py',
@@ -153,20 +156,20 @@ exe = EXE(
     with open(spec_file, 'w') as f:
         f.write(spec_content)
 
-    print(f"Created spec file: {spec_file}")
+    logger.info(f"Created spec file: {spec_file}")
     return spec_file
 
 
 def build_with_pyinstaller(spec_file):
     """Run PyInstaller with the spec file."""
-    print(f"Building executable with PyInstaller...")
+    logger.info(f"Building executable with PyInstaller...")
     try:
         subprocess.check_call(
             [sys.executable, '-m', 'PyInstaller', str(spec_file), '--clean', '--noconfirm'])
-        print("Build completed successfully!")
+        logger.info("Build completed successfully!")
         return True
     except subprocess.CalledProcessError as e:
-        print(f"Build failed: {e}")
+        logger.error(f"Build failed: {e}")
         return False
 
 
@@ -182,7 +185,7 @@ def create_distribution_package(platform_name):
     gui_exe_path = dist_dir / gui_exe_name
 
     if not cli_exe_path.exists():
-        print(f"Error: CLI executable not found at {cli_exe_path}")
+        logger.error(f"Error: CLI executable not found at {cli_exe_path}")
         return None
 
     # Create package directory
@@ -192,14 +195,14 @@ def create_distribution_package(platform_name):
 
     # Copy CLI executable
     shutil.copy2(cli_exe_path, package_dir / cli_exe_name)
-    print(f"Packaged CLI executable: {cli_exe_name}")
+    logger.info(f"Packaged CLI executable: {cli_exe_name}")
 
     # Copy GUI executable if it exists
     if gui_exe_path.exists():
         shutil.copy2(gui_exe_path, package_dir / gui_exe_name)
-        print(f"Packaged GUI executable: {gui_exe_name}")
+        logger.info(f"Packaged GUI executable: {gui_exe_name}")
     else:
-        print(f"GUI executable not found at {gui_exe_path}, skipping")
+        logger.warning(f"GUI executable not found at {gui_exe_path}, skipping")
 
     # Copy documentation files
     for doc in DOCS_TO_INCLUDE:
@@ -215,7 +218,7 @@ def create_distribution_package(platform_name):
         archive_path = dist_dir / f"{archive_name}.tar.gz"
         shutil.make_archive(str(dist_dir / archive_name), 'gztar', package_dir)
 
-    print(f"Created distribution package: {archive_path}")
+    logger.info(f"Created distribution package: {archive_path}")
     return archive_path
 
 
@@ -229,7 +232,8 @@ def main():
 
     # Determine platform
     target_platform = args.platform if args.platform else get_platform()
-    print(f"Building for platform: {target_platform}")
+    logging_utils.setup_logging()
+    logger.info(f"Building for platform: {target_platform}")
 
     # Install PyInstaller
     install_pyinstaller()
@@ -249,19 +253,19 @@ def main():
 
     # Verify we have all required binaries
     if not binaries_data['handbrake']:
-        print("\n[FAILED] No HandBrakeCLI binary available for bundling")
+        logger.error("\n[FAILED] No HandBrakeCLI binary available for bundling")
         sys.exit(1)
     if not binaries_data['ffmpeg']['ffmpeg'] or not binaries_data['ffmpeg']['ffprobe']:
-        print("\n[FAILED] No FFmpeg/ffprobe binaries available for bundling")
+        logger.error("\n[FAILED] No FFmpeg/ffprobe binaries available for bundling")
         sys.exit(1)
 
-    print(f"\n[SUCCESS] All binaries ready for bundling:")
-    print(f"  HandBrakeCLI: {binaries_data.get('handbrake')}")
-    print(f"  ffmpeg: {binaries_data['ffmpeg'].get('ffmpeg')}")
-    print(f"  ffprobe: {binaries_data['ffmpeg'].get('ffprobe')}")
+    logger.info(f"\n[SUCCESS] All binaries ready for bundling:")
+    logger.info(f"  HandBrakeCLI: {binaries_data.get('handbrake')}")
+    logger.info(f"  ffmpeg: {binaries_data['ffmpeg'].get('ffmpeg')}")
+    logger.info(f"  ffprobe: {binaries_data['ffmpeg'].get('ffprobe')}")
 
     # Create spec files for both CLI and GUI versions
-    print("\nCreating PyInstaller spec files...")
+    logger.info("\nCreating PyInstaller spec files...")
 
     # CLI version with console (always runs in background mode)
     spec_file_cli = create_spec_file(
@@ -282,31 +286,31 @@ def main():
     )
 
     # Build both executables with PyInstaller
-    print("\nBuilding CLI executable...")
+    logger.info("\nBuilding CLI executable...")
     cli_success = build_with_pyinstaller(spec_file_cli)
 
     if not cli_success:
-        print("\n[FAILED] CLI build failed!")
+        logger.error("\n[FAILED] CLI build failed!")
         sys.exit(1)
 
-    print("\nBuilding GUI executable...")
+    logger.info("\nBuilding GUI executable...")
     gui_success = build_with_pyinstaller(spec_file_gui)
 
     if not gui_success:
-        print("\n[WARNING] GUI build failed, but CLI build succeeded")
-        print("This might happen if tkinter is not available")
+        logger.error("\n[WARNING] GUI build failed, but CLI build succeeded, This might happen if tkinter is not available")
+        sys.exit(1)
 
     # Create distribution package
-    print("\nCreating distribution package...")
+    logger.info("\nCreating distribution package...")
     create_distribution_package(target_platform)
 
-    print("\n[SUCCESS] Build completed successfully!")
+    logger.info("\n[SUCCESS] Build completed successfully!")
     exe_extension = '.exe' if target_platform == 'windows' else ''
-    print(f"\nExecutable locations:")
-    print(f"  CLI: dist/convert_videos_cli{exe_extension}")
+    logger.info(f"\nExecutable locations:")
+    logger.info(f"  CLI: dist/convert_videos_cli{exe_extension}")
     if gui_success:
-        print(f"  GUI: dist/convert_videos_gui{exe_extension}")
-    print(
+        logger.info(f"  GUI: dist/convert_videos_gui{exe_extension}")
+    logger.info(
         f"Distribution package: dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
 
 
