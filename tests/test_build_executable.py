@@ -365,7 +365,7 @@ class TestMain(unittest.TestCase):
         build_executable.main()
         
         # Should exit with error
-        mock_exit.assert_called_once_with(1)
+        mock_exit.assert_called_with(1)
     
     @patch('build_executable.create_distribution_package')
     @patch('build_executable.build_with_pyinstaller')

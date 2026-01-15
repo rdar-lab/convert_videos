@@ -292,7 +292,6 @@ def main():
     if not cli_success:
         logger.error("\n[FAILED] CLI build failed!")
         sys.exit(1)
-		return
 
     logger.info("\nBuilding GUI executable...")
     gui_success = build_with_pyinstaller(spec_file_gui)
@@ -300,7 +299,6 @@ def main():
     if not gui_success:
         logger.error("\n[WARNING] GUI build failed, but CLI build succeeded, This might happen if tkinter is not available")
         sys.exit(1)
-		return
 
     # Create distribution package
     logger.info("\nCreating distribution package...")
