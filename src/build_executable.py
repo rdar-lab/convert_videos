@@ -30,7 +30,7 @@ HANDBRAKE_VERSION = '1.7.2'
 FFMPEG_VERSION = '6.1'
 
 # Documentation files to include in distribution
-DOCS_TO_INCLUDE = ['README.md', 'LICENSE', 'config.yaml.example', 'BUILD.md']
+DOCS_TO_INCLUDE = ['README.md', 'LICENSE', 'config.yaml.example', 'docs/BUILD.md']
 
 
 def get_platform():
