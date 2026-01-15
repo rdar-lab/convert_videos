@@ -29,7 +29,14 @@ RUN apt-get install -y handbrake-cli
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-COPY . /usr/local/bin/
+# Copy source files to /usr/local/lib/convert_videos/src
+COPY src /usr/local/lib/convert_videos/src
+
+# Set working directory
+WORKDIR /usr/local/lib/convert_videos
+
+# Copy entrypoint script to /usr/local/bin
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

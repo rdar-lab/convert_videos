@@ -18,7 +18,7 @@ TARGET_DIR=${ARGS[0]:-/data}
 
 # Build command with appropriate flags using array
 # Use -u flag for unbuffered output so logs appear immediately in Docker
-CMD_ARGS=('python3' '-u' '/usr/local/bin/convert_videos_cli.py')
+CMD_ARGS=('python3' '-u' '-m' 'src.convert_videos_cli')
 
 if $DRY_RUN; then
     echo "Running in dry-run mode: no actual conversion will be done."
