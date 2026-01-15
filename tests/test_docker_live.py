@@ -62,7 +62,7 @@ class TestDockerLive(unittest.TestCase):
         """
         try:
             # Get the static test video file from test_fixtures
-            repo_path = Path(__file__).parent.absolute()
+            repo_path = Path(__file__).parent.parent.absolute()
             static_video = repo_path / 'tests' / 'test_fixtures' / 'test_video.mp4'
             
             if not static_video.exists():
