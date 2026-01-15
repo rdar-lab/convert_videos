@@ -154,7 +154,7 @@ def check_single_dependency(command):
     for version_flag in ['--version', '-version']:
         try:
             command_args = [command, version_flag]
-            subprocess_utils.run_command(command_args, check=True, timeout=5)
+            subprocess_utils.run_command(command_args, timeout=5)
             return True, None
         except FileNotFoundError:
             return False, "not_found"

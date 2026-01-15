@@ -48,7 +48,7 @@ def get_codec(file_path, dependency_config=None):
                     '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)]
 
     try:
-        result = subprocess_utils.run_command(command_args, check=True)
+        result = subprocess_utils.run_command(command_args)
         return result.stdout.strip()
     except Exception as e:
         logger.error(f"Error getting codec for {file_path}: {e}")
@@ -72,8 +72,7 @@ def get_duration(file_path, dependency_config=None):
         result = subprocess_utils.run_command(
             [ffprobe_path, '-v', 'error',
              '-show_entries', 'format=duration',
-             '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)],
-            check=True
+             '-of', 'default=noprint_wrappers=1:nokey=1', str(file_path)]
         )
         duration_str = result.stdout.strip()
         if duration_str:
@@ -237,7 +236,6 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
                 cmd,
                 progress_callback=progress_callback,
                 cancellation_check=cancellation_check,
-                check=True,
                 creationflags=BELOW_NORMAL_PRIORITY_CLASS
             )
         else:
@@ -247,16 +245,14 @@ def convert_file(input_path, dry_run=False, preserve_original=False, output_conf
                 subprocess_utils.run_command(
                     command_args,
                     progress_callback=progress_callback,
-                    cancellation_check=cancellation_check,
-                    check=True
+                    cancellation_check=cancellation_check
                 )
             except FileNotFoundError:
                 # nice not available, run without it
                 subprocess_utils.run_command(
                     cmd,
                     progress_callback=progress_callback,
-                    cancellation_check=cancellation_check,
-                    check=True
+                    cancellation_check=cancellation_check
                 )
 
         # Validate and finalize
