@@ -73,9 +73,6 @@ def create_spec_file(platform_name, binaries_data, script_name='convert_videos.p
         exe_name: Name for the output executable (default: 'convert_videos')
         console: Whether to show console window (default: True for CLI, False for GUI)
     """
-    # Script needs src/ prefix since we run from repo root
-    script_path = f'src/{script_name}'
-    
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
@@ -109,7 +106,7 @@ binaries = []
 
     spec_content += f"""
 a = Analysis(
-    ['{script_path}'],
+    ['{script_name}'],
     pathex=[],
     binaries=binaries,
     datas=datas,
@@ -155,10 +152,10 @@ exe = EXE(
 
     spec_content += ")\n"
 
-    # Create spec file in repo root (not in src)
+    # Create spec file in the src directory (where this script is located)
     src_dir = Path(__file__).parent
-    repo_root = src_dir.parent
-    spec_file = repo_root / f'{exe_name}.spec'
+
+    spec_file = src_dir / f'{exe_name}.spec'
     with open(spec_file, 'w') as f:
         f.write(spec_content)
 
@@ -169,21 +166,27 @@ exe = EXE(
 def build_with_pyinstaller(spec_file):
     """Run PyInstaller with the spec file.
     
-    Runs from repo root with src in the Python path.
+    Runs from the src directory so all imports work naturally.
     """
     logger.info(f"Building executable with PyInstaller...")
     try:
-        # Get paths
+        # Get the src directory (where this script is located)
         src_dir = Path(__file__).parent
+
+        # Repo root
         repo_root = src_dir.parent
-        
-        # Run PyInstaller from repo root
-        # Use --paths to add src directory to Python path for finding modules
+
+        # dist directory
+        dist_dir = repo_root / 'dist'
+        dist_dir.mkdir(exist_ok=True)
+
+        work_dir = repo_root / 'build'
+        work_dir.mkdir(exist_ok=True)
+
+        # Run PyInstaller from the src directory
         subprocess.check_call(
-            [sys.executable, '-m', 'PyInstaller', str(spec_file), 
-             '--clean', '--noconfirm',
-             '--paths', str(src_dir)],
-            cwd=str(repo_root))
+            [sys.executable, '-m', 'PyInstaller', str(spec_file), '--clean', '--noconfirm', '--distpath', dist_dir, '--workpath', work_dir],
+            cwd=str(src_dir))
         logger.info("Build completed successfully!")
         return True
     except subprocess.CalledProcessError as e:
@@ -193,9 +196,8 @@ def build_with_pyinstaller(spec_file):
 
 def create_distribution_package(platform_name):
     """Create a distributable archive with the executables and necessary files."""
-    # PyInstaller creates dist directory in repo root when run from there
-    src_dir = Path(__file__).parent
-    repo_root = src_dir.parent
+    # PyInstaller creates dist directory in src when run from src
+    repo_root = Path(__file__).parent.parent
     dist_dir = repo_root / 'dist'
     exe_extension = '.exe' if platform_name == 'windows' else ''
 
@@ -330,11 +332,11 @@ def main():
     logger.info("[SUCCESS] Build completed successfully!")
     exe_extension = '.exe' if target_platform == 'windows' else ''
     logger.info(f"Executable locations:")
-    logger.info(f"  CLI: dist/convert_videos_cli{exe_extension}")
+    logger.info(f"  CLI: src/dist/convert_videos_cli{exe_extension}")
     if gui_success:
-        logger.info(f"  GUI: dist/convert_videos_gui{exe_extension}")
+        logger.info(f"  GUI: src/dist/convert_videos_gui{exe_extension}")
     logger.info(
-        f"Distribution package: dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
+        f"Distribution package: src/dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
 
 
 if __name__ == '__main__':
