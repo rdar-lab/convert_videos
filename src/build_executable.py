@@ -34,7 +34,7 @@ FFMPEG_VERSION = '6.1'
 # Documentation files to include in distribution
 DOCS_TO_INCLUDE = ['README.md', 'LICENSE', 'config.yaml.example']
 
-logger = logging.getLogger(__main__)
+logger = logging.getLogger(__name__)
 
 def get_platform():
     """Detect the current platform."""
