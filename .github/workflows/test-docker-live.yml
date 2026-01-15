@@ -29,5 +29,5 @@ jobs:
     
     - name: Run Docker live integration test
       run: |
-        pytest test_docker_live.py -v -s -m docker
+        pytest tests/test_docker_live.py -v -s -m docker
       timeout-minutes: 10
