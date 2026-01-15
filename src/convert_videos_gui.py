@@ -561,7 +561,7 @@ class VideoConverterGUI:
 
             try:
                 # Call centralized download function
-                handbrake_path, ffprobe_path, ffmpeg_path = dependencies_utils.download_dependencies(Path('dependencies')
+                handbrake_path, ffprobe_path, ffmpeg_path = dependencies_utils.download_dependencies(Path('dependencies'),
                     progress_callback)
 
                 if handbrake_path and ffprobe_path and ffmpeg_path:
