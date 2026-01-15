@@ -191,8 +191,7 @@ def _is_within_directory(directory, target):
     """
     abs_directory = os.path.abspath(directory)
     abs_target = os.path.abspath(target)
-    prefix = os.path.commonpath([abs_directory])
-    return os.path.commonpath([abs_directory, abs_target]) == prefix
+    return os.path.commonpath([abs_directory, abs_target]) == abs_directory
 
 
 def _safe_extract_tar(tar, extract_to):
@@ -225,9 +224,14 @@ def _safe_extract_dmg(mount_point, extract_to):
         # Calculate relative path from mount point
         rel_dir = os.path.relpath(root, mount_point)
         
+        # Normalize and validate the relative path doesn't contain .. components
+        rel_dir_normalized = os.path.normpath(rel_dir)
+        if rel_dir_normalized.startswith('..') or os.path.isabs(rel_dir_normalized):
+            raise RuntimeError(f"Attempted path traversal in DMG archive: {rel_dir}")
+        
         # Create corresponding directory in extract_to
-        if rel_dir != '.':
-            dest_dir = os.path.join(extract_to, rel_dir)
+        if rel_dir_normalized != '.':
+            dest_dir = os.path.join(extract_to, rel_dir_normalized)
         else:
             dest_dir = extract_to
             
@@ -240,6 +244,10 @@ def _safe_extract_dmg(mount_point, extract_to):
         
         # Copy all files in this directory
         for file in files:
+            # Validate filename doesn't contain path separators
+            if os.path.sep in file or (os.path.altsep and os.path.altsep in file):
+                raise RuntimeError(f"Invalid filename in DMG archive: {file}")
+            
             src_file = os.path.join(root, file)
             dest_file = os.path.join(dest_dir, file)
             
