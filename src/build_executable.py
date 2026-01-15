@@ -253,19 +253,19 @@ def main():
 
     # Verify we have all required binaries
     if not binaries_data['handbrake']:
-        logger.error("\n[FAILED] No HandBrakeCLI binary available for bundling")
+        logger.error("[FAILED] No HandBrakeCLI binary available for bundling")
         sys.exit(1)
     if not binaries_data['ffmpeg']['ffmpeg'] or not binaries_data['ffmpeg']['ffprobe']:
-        logger.error("\n[FAILED] No FFmpeg/ffprobe binaries available for bundling")
+        logger.error("[FAILED] No FFmpeg/ffprobe binaries available for bundling")
         sys.exit(1)
 
-    logger.info(f"\n[SUCCESS] All binaries ready for bundling:")
+    logger.info(f"[SUCCESS] All binaries ready for bundling:")
     logger.info(f"  HandBrakeCLI: {binaries_data.get('handbrake')}")
     logger.info(f"  ffmpeg: {binaries_data['ffmpeg'].get('ffmpeg')}")
     logger.info(f"  ffprobe: {binaries_data['ffmpeg'].get('ffprobe')}")
 
     # Create spec files for both CLI and GUI versions
-    logger.info("\nCreating PyInstaller spec files...")
+    logger.info("Creating PyInstaller spec files...")
 
     # CLI version with console (always runs in background mode)
     spec_file_cli = create_spec_file(
@@ -286,27 +286,27 @@ def main():
     )
 
     # Build both executables with PyInstaller
-    logger.info("\nBuilding CLI executable...")
+    logger.info("Building CLI executable...")
     cli_success = build_with_pyinstaller(spec_file_cli)
 
     if not cli_success:
-        logger.error("\n[FAILED] CLI build failed!")
+        logger.error("[FAILED] CLI build failed!")
         sys.exit(1)
 
-    logger.info("\nBuilding GUI executable...")
+    logger.info("Building GUI executable...")
     gui_success = build_with_pyinstaller(spec_file_gui)
 
     if not gui_success:
-        logger.error("\n[WARNING] GUI build failed, but CLI build succeeded, This might happen if tkinter is not available")
+        logger.error("[WARNING] GUI build failed, but CLI build succeeded, This might happen if tkinter is not available")
         sys.exit(1)
 
     # Create distribution package
-    logger.info("\nCreating distribution package...")
+    logger.info("Creating distribution package...")
     create_distribution_package(target_platform)
 
-    logger.info("\n[SUCCESS] Build completed successfully!")
+    logger.info("[SUCCESS] Build completed successfully!")
     exe_extension = '.exe' if target_platform == 'windows' else ''
-    logger.info(f"\nExecutable locations:")
+    logger.info(f"Executable locations:")
     logger.info(f"  CLI: dist/convert_videos_cli{exe_extension}")
     if gui_success:
         logger.info(f"  GUI: dist/convert_videos_gui{exe_extension}")
