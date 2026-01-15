@@ -152,7 +152,10 @@ exe = EXE(
 
     spec_content += ")\n"
 
-    spec_file = Path(f'{exe_name}.spec')
+    # Create spec file in the src directory (where this script is located)
+    src_dir = Path(__file__).parent
+
+    spec_file = src_dir / f'{exe_name}.spec'
     with open(spec_file, 'w') as f:
         f.write(spec_content)
 
@@ -161,11 +164,29 @@ exe = EXE(
 
 
 def build_with_pyinstaller(spec_file):
-    """Run PyInstaller with the spec file."""
+    """Run PyInstaller with the spec file.
+    
+    Runs from the src directory so all imports work naturally.
+    """
     logger.info(f"Building executable with PyInstaller...")
     try:
+        # Get the src directory (where this script is located)
+        src_dir = Path(__file__).parent
+
+        # Repo root
+        repo_root = src_dir.parent
+
+        # dist directory
+        dist_dir = repo_root / 'dist'
+        dist_dir.mkdir(exist_ok=True)
+
+        work_dir = repo_root / 'build'
+        work_dir.mkdir(exist_ok=True)
+
+        # Run PyInstaller from the src directory
         subprocess.check_call(
-            [sys.executable, '-m', 'PyInstaller', str(spec_file), '--clean', '--noconfirm'])
+            [sys.executable, '-m', 'PyInstaller', str(spec_file), '--clean', '--noconfirm', '--distpath', dist_dir, '--workpath', work_dir],
+            cwd=str(src_dir))
         logger.info("Build completed successfully!")
         return True
     except subprocess.CalledProcessError as e:
@@ -175,7 +196,9 @@ def build_with_pyinstaller(spec_file):
 
 def create_distribution_package(platform_name):
     """Create a distributable archive with the executables and necessary files."""
-    dist_dir = Path('dist')
+    # PyInstaller creates dist directory in src when run from src
+    repo_root = Path(__file__).parent.parent
+    dist_dir = repo_root / 'dist'
     exe_extension = '.exe' if platform_name == 'windows' else ''
 
     # Check for both executables
@@ -204,10 +227,11 @@ def create_distribution_package(platform_name):
     else:
         logger.warning(f"GUI executable not found at {gui_exe_path}, skipping")
 
-    # Copy documentation files
+    # Copy documentation files from repo root
     for doc in DOCS_TO_INCLUDE:
-        if Path(doc).exists():
-            shutil.copy2(doc, package_dir / doc)
+        doc_path = repo_root / doc
+        if doc_path.exists():
+            shutil.copy2(doc_path, package_dir / doc)
 
     # Create archive
     archive_name = f"{package_name}"
@@ -238,9 +262,10 @@ def main():
     # Install PyInstaller
     install_pyinstaller()
 
-    # Always download dependencies
+    # Always download dependencies to repo root
+    repo_root = Path(__file__).parent.parent
     binaries_data = {}
-    download_dir = Path('external_binaries')
+    download_dir = repo_root / 'external_binaries'
     download_dir.mkdir(exist_ok=True)
 
     handbrake_path, ffprobe_path, ffmpeg_path = dependencies_utils.download_dependencies(
@@ -307,11 +332,11 @@ def main():
     logger.info("[SUCCESS] Build completed successfully!")
     exe_extension = '.exe' if target_platform == 'windows' else ''
     logger.info(f"Executable locations:")
-    logger.info(f"  CLI: dist/convert_videos_cli{exe_extension}")
+    logger.info(f"  CLI: src/dist/convert_videos_cli{exe_extension}")
     if gui_success:
-        logger.info(f"  GUI: dist/convert_videos_gui{exe_extension}")
+        logger.info(f"  GUI: src/dist/convert_videos_gui{exe_extension}")
     logger.info(
-        f"Distribution package: dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
+        f"Distribution package: src/dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
 
 
 if __name__ == '__main__':
