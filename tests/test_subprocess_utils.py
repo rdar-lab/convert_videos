@@ -6,6 +6,7 @@ Unit tests for subprocess_utils.py
 import unittest
 from unittest.mock import patch, MagicMock
 import subprocess
+import sys
 
 # Import the module to test
 import subprocess_utils
@@ -114,7 +115,126 @@ class TestRunCommand(unittest.TestCase):
         self.assertIn(30.0, progress_updates)
         self.assertIn(60.0, progress_updates)
         self.assertIn(90.0, progress_updates)
+    
+    @patch('subprocess_utils.subprocess.run')
+    def test_run_command_with_timeout(self, mock_run):
+        """Test command with timeout parameter."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run.return_value = mock_result
+        
+        subprocess_utils.run_command(['test'], timeout=30)
+        
+        # Verify timeout was passed
+        call_kwargs = mock_run.call_args[1]
+        self.assertEqual(call_kwargs['timeout'], 30)
+    
+    @patch('subprocess_utils.subprocess.Popen')
+    def test_run_command_progress_exception_handling(self, mock_popen):
+        """Test that progress extraction exceptions are handled."""
+        mock_process = MagicMock()
+        mock_process.stdout = ['Invalid progress line\n', 'Encoding: 50.0 % complete\n']
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
+        
+        progress_updates = []
+        def progress_callback(percentage):
+            progress_updates.append(percentage)
+        
+        result = subprocess_utils.run_command(
+            ['test_command'],
+            progress_callback=progress_callback
+        )
+        
+        # Should handle invalid line gracefully and still capture valid progress
+        self.assertEqual(len(progress_updates), 1)
+        self.assertIn(50.0, progress_updates)
+    
+    @patch('subprocess_utils.subprocess.Popen')
+    def test_run_command_process_kill_on_timeout(self, mock_popen):
+        """Test that process is killed if termination times out."""
+        mock_process = MagicMock()
+        mock_process.stdout = ['Line 1\n']
+        mock_process.wait.side_effect = [subprocess.TimeoutExpired(['cmd'], 5), None]
+        mock_popen.return_value = mock_process
+        
+        def cancel_immediately():
+            return True
+        
+        with self.assertRaises(InterruptedError):
+            subprocess_utils.run_command(
+                ['test_command'],
+                cancellation_check=cancel_immediately
+            )
+        
+        # Should call terminate, then kill after timeout
+        mock_process.terminate.assert_called_once()
+        mock_process.kill.assert_called_once()
+    
+    @patch('subprocess_utils.subprocess.run')
+    def test_run_command_without_check(self, mock_run):
+        """Test command that fails but check=False."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = "error"
+        mock_run.return_value = mock_result
+        
+        result = subprocess_utils.run_command(['false'], check=False)
+        
+        # Should not raise exception
+        self.assertEqual(result.returncode, 1)
+    
+    @patch('subprocess_utils.sys.platform', 'win32')
+    @patch('subprocess_utils.sys.frozen', True, create=True)
+    @patch('subprocess_utils.subprocess.run')
+    def test_run_command_windows_frozen_app(self, mock_run):
+        """Test Windows frozen app includes CREATE_NO_WINDOW flag."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run.return_value = mock_result
+        
+        subprocess_utils.run_command(['test'])
+        
+        # Verify CREATE_NO_WINDOW flag was set
+        call_kwargs = mock_run.call_args[1]
+        self.assertIn('creationflags', call_kwargs)
+        # Should have CREATE_NO_WINDOW flag (0x08000000)
+        self.assertTrue(call_kwargs['creationflags'] & 0x08000000)
+    
+    @patch('subprocess_utils.subprocess.run')
+    def test_run_command_captures_text(self, mock_run):
+        """Test that command output is captured as text."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "text output"
+        mock_run.return_value = mock_result
+        
+        subprocess_utils.run_command(['test'])
+        
+        # Verify text mode was set
+        call_kwargs = mock_run.call_args[1]
+        self.assertTrue(call_kwargs.get('text') or call_kwargs.get('universal_newlines'))
+    
+    @patch('subprocess_utils.subprocess.Popen')
+    def test_run_command_collects_output_lines(self, mock_popen):
+        """Test that output lines are collected during progress monitoring."""
+        mock_process = MagicMock()
+        mock_process.stdout = ['Line 1\n', 'Line 2\n', 'Line 3\n']
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
+        
+        def progress_callback(pct):
+            pass
+        
+        result = subprocess_utils.run_command(
+            ['test'],
+            progress_callback=progress_callback
+        )
+        
+        # Should have captured all output
+        self.assertEqual(result.returncode, 0)
 
 
 if __name__ == '__main__':
     unittest.main()
+

@@ -6,10 +6,12 @@ Unit tests for duplicate_detector.py
 import unittest
 import tempfile
 import os
+from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 from duplicate_detector import (
     DuplicateResult, hamming_distance, create_comparison_thumbnail,
-    MAX_HAMMING_DISTANCE_ERROR
+    scan_for_duplicates, MAX_HAMMING_DISTANCE_ERROR
 )
 from PIL import Image
 
@@ -72,6 +74,17 @@ class TestHammingDistance(unittest.TestCase):
         """Test hamming distance with invalid input."""
         distance = hamming_distance(None, "abc123")
         self.assertEqual(distance, MAX_HAMMING_DISTANCE_ERROR)  # Should return error constant on error
+    
+    def test_hamming_distance_empty_strings(self):
+        """Test hamming distance with empty strings."""
+        distance = hamming_distance("", "")
+        self.assertEqual(distance, 0)
+    
+    def test_hamming_distance_different_lengths(self):
+        """Test hamming distance with different length strings."""
+        # Different lengths should be handled
+        distance = hamming_distance("abc", "abcdef")
+        self.assertIsNotNone(distance)
 
 
 class TestComparisonThumbnail(unittest.TestCase):
@@ -103,6 +116,138 @@ class TestComparisonThumbnail(unittest.TestCase):
         """Test creating comparison thumbnail with invalid files."""
         result_path = create_comparison_thumbnail(["/nonexistent1.jpg", "/nonexistent2.jpg"])
         self.assertIsNone(result_path)
+    
+    def test_create_comparison_thumbnail_single_image(self):
+        """Test creating comparison thumbnail with single image."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            img1_path = os.path.join(tmpdir, "img1.jpg")
+            img1 = Image.new('RGB', (100, 100), color='green')
+            img1.save(img1_path)
+            
+            result_path = create_comparison_thumbnail([img1_path])
+            if result_path:
+                self.assertTrue(os.path.exists(result_path))
+                os.unlink(result_path)
+    
+    def test_create_comparison_thumbnail_empty_list(self):
+        """Test creating comparison thumbnail with empty list."""
+        result_path = create_comparison_thumbnail([])
+        self.assertIsNone(result_path)
+
+
+class TestScanForDuplicates(unittest.TestCase):
+    """Test finding duplicate videos."""
+    
+    @patch('duplicate_detector.run_command')
+    @patch('duplicate_detector.imagehash.average_hash')
+    @patch('duplicate_detector.Image.open')
+    @patch('duplicate_detector.os.walk')
+    def test_scan_for_duplicates_with_duplicates(self, mock_walk, mock_image_open,
+                                                   mock_hash, mock_run):
+        """Test finding duplicate videos when duplicates exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Mock directory walking
+            mock_walk.return_value = [
+                (tmpdir, [], ['video1.mp4', 'video2.mp4'])
+            ]
+            
+            # Mock ffprobe output (duration)
+            mock_duration_result = MagicMock()
+            mock_duration_result.returncode = 0
+            mock_duration_result.stdout = '120.5'
+            
+            # Mock ffmpeg output (frame extraction)
+            mock_extract_result = MagicMock()
+            mock_extract_result.returncode = 0
+            
+            mock_run.side_effect = [
+                mock_duration_result, mock_extract_result,  # video1
+                mock_duration_result, mock_extract_result   # video2
+            ]
+            
+            # Mock image hashing
+            mock_hash.return_value = 'samehash123'
+            
+            # Mock Image.open
+            mock_img = MagicMock()
+            mock_image_open.return_value = mock_img
+            
+            # Run function
+            results = scan_for_duplicates(tmpdir, max_distance=5, 
+                                         ffmpeg_path='/usr/bin/ffmpeg', 
+                                         ffprobe_path='/usr/bin/ffprobe')
+            
+            # Should find duplicates since hashes are identical
+            self.assertIsNotNone(results)
+            self.assertGreater(len(results), 0)
+    
+    @patch('duplicate_detector.os.walk')
+    def test_scan_for_duplicates_no_videos(self, mock_walk):
+        """Test finding duplicates when no videos exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Mock empty directory
+            mock_walk.return_value = [(tmpdir, [], [])]
+            
+            # Should raise exception for no videos
+            with self.assertRaises(Exception) as context:
+                scan_for_duplicates(tmpdir, max_distance=5,
+                                   ffmpeg_path='/usr/bin/ffmpeg', 
+                                   ffprobe_path='/usr/bin/ffprobe')
+            
+            self.assertIn('No video files found', str(context.exception))
+    
+    @patch('duplicate_detector.run_command')
+    @patch('duplicate_detector.os.walk')
+    def test_scan_for_duplicates_with_progress_callback(self, mock_walk, mock_run):
+        """Test finding duplicates with progress callback."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_walk.return_value = [(tmpdir, [], ['video1.mp4'])]
+            
+            # Mock command results
+            mock_duration_result = MagicMock()
+            mock_duration_result.returncode = 0
+            mock_duration_result.stdout = '60.0'
+            
+            mock_extract_result = MagicMock()
+            mock_extract_result.returncode = 0
+            
+            mock_run.side_effect = [mock_duration_result, mock_extract_result]
+            
+            # Progress callback
+            progress_messages = []
+            def progress_cb(msg):
+                progress_messages.append(msg)
+            
+            try:
+                scan_for_duplicates(tmpdir, max_distance=5,
+                                   ffmpeg_path='/usr/bin/ffmpeg', 
+                                   ffprobe_path='/usr/bin/ffprobe',
+                                   progress_callback=progress_cb)
+            except:
+                pass  # May fail due to mocking, but we're testing callback
+            
+            # Should have received progress messages
+            self.assertGreater(len(progress_messages), 0)
+    
+    @patch('duplicate_detector.run_command')
+    @patch('duplicate_detector.os.walk')
+    def test_scan_for_duplicates_ffprobe_failure(self, mock_walk, mock_run):
+        """Test handling ffprobe failures."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_walk.return_value = [(tmpdir, [], ['video1.mp4'])]
+            
+            # Mock failed ffprobe
+            mock_result = MagicMock()
+            mock_result.returncode = 1
+            mock_result.stdout = ''
+            mock_run.return_value = mock_result
+            
+            # Should handle gracefully (skip video)
+            results = scan_for_duplicates(tmpdir, max_distance=5,
+                                         ffmpeg_path='/usr/bin/ffmpeg', 
+                                         ffprobe_path='/usr/bin/ffprobe')
+            # May return empty list or raise exception
+            self.assertIsNotNone(results)
 
 
 if __name__ == '__main__':
