@@ -132,7 +132,7 @@ def validate_dependencies(dependency_paths=None):
     if missing:
         logger.error(f"Missing dependencies: {', '.join(missing)}")
         logger.error(
-            "Please install the required dependencies. See WINDOWS_INSTALL.md or README.md for instructions.")
+            "Please install the required dependencies. See docs/WINDOWS_INSTALL.md or README.md for instructions.")
 
     return not missing
 

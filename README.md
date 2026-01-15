@@ -149,11 +149,11 @@ Pre-built portable executables are available for Windows, Linux, and macOS from 
 
 The GUI executable runs without a console window for a clean experience. The CLI executable always runs in background mode, supports all command-line options, and is suitable for scripts and automation.
 
-**Building from source:** See [BUILD.md](BUILD.md) for instructions on building your own portable executables.
+**Building from source:** See [BUILD.md](docs/BUILD.md) for instructions on building your own portable executables.
 
 ### Windows (Without Docker)
 
-See **[WINDOWS_INSTALL.md](WINDOWS_INSTALL.md)** for detailed Windows installation instructions.
+See **[WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md)** for detailed Windows installation instructions.
 
 **Quick Start:**
 ```cmd
@@ -272,7 +272,7 @@ pytest -v
 pytest --cov=convert_videos --cov-report=term-missing
 ```
 
-See [TESTING.md](TESTING.md) for detailed testing documentation.
+See [TESTING.md](docs/TESTING.md) for detailed testing documentation.
 
 ### Continuous Integration
 

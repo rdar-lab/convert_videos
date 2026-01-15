@@ -62,8 +62,8 @@ class TestDockerLive(unittest.TestCase):
         """
         try:
             # Get the static test video file from test_fixtures
-            repo_path = Path(__file__).parent.absolute()
-            static_video = repo_path / 'test_fixtures' / 'test_video.mp4'
+            repo_path = Path(__file__).parent.parent.absolute()
+            static_video = repo_path / 'tests' / 'test_fixtures' / 'test_video.mp4'
             
             if not static_video.exists():
                 print(f"✗ Static test video not found: {static_video}")
@@ -312,7 +312,7 @@ class TestDockerLive(unittest.TestCase):
         6. Clean up
         """
         # Setup
-        repo_path = Path(__file__).parent.absolute()
+        repo_path = Path(__file__).parent.parent.absolute()  # Go up to repo root
         image_tag = 'convert_videos_test:latest'
         container_name = 'convert_videos_test_container'
         
