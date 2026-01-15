@@ -213,6 +213,8 @@ def _safe_extract_tar(tar, extract_to):
         member_path = os.path.join(extract_to, member.name)
         if not _is_within_directory(extract_to, member_path):
             raise RuntimeError(f"Attempted path traversal in tar archive: {member.name}")
+        else:
+            logger.info(f'Extracting: {member_path}')
     tar.extractall(extract_to)
 
 
@@ -222,6 +224,8 @@ def _safe_extract_zip(zip_ref, extract_to):
         member_path = os.path.join(extract_to, member.filename)
         if not _is_within_directory(extract_to, member_path):
             raise RuntimeError(f"Attempted path traversal in zip archive: {member.filename}")
+        else:
+            logger.info(f'Extracting: {member_path}')
     zip_ref.extractall(extract_to)
 
 
@@ -279,6 +283,7 @@ def _safe_extract_dmg(mount_point, extract_to):
                 raise RuntimeError(f"Attempted path traversal in DMG archive: {os.path.join(rel_dir, file)}")
 
             shutil.copy2(src_file, dest_file)
+            logger.info(f'Extracted: {dest_file}')
 
 
 def extract_dmg(dmg_path, extract_to):
