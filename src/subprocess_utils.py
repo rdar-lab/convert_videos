@@ -159,6 +159,9 @@ def run_command(command_args, progress_callback=None, progress_pattern=None, can
         if 'text' not in kwargs:
             kwargs['text'] = True
 
+        if 'check' not in kwargs:
+            kwargs['check'] = True
+
         try:
             result = subprocess.run(command_args, **kwargs)
 

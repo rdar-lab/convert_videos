@@ -130,7 +130,7 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
                 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
                 str(video_file)
             ]
-            result = run_command(duration_cmd, timeout=30)
+            result = run_command(duration_cmd, timeout=30, check=False)
             
             if result.returncode != 0 or not result.stdout.strip():
                 logger.warning(f"Could not determine duration for {video_file}")
@@ -147,7 +147,7 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
                 '-vframes', '1', '-q:v', '2', '-f', 'image2',
                 str(temp_frame_path), '-y'
             ]
-            run_command(extract_cmd, timeout=30, check=True)
+            run_command(extract_cmd, timeout=30)
             
             # Calculate perceptual hash
             if os.path.exists(temp_frame_path) and os.path.getsize(temp_frame_path) > 0:

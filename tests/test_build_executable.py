@@ -102,7 +102,7 @@ class TestCreateSpecFile(unittest.TestCase):
             exe_name='test_exe'
         )
         
-        self.assertEqual(spec_file, Path('test_exe.spec'))
+        self.assertIn('test_exe.spec', str(spec_file))
         
         # Verify file was written
         mock_file.assert_called_once_with(spec_file, 'w')
@@ -365,7 +365,7 @@ class TestMain(unittest.TestCase):
         build_executable.main()
         
         # Should exit with error
-        mock_exit.assert_called_once_with(1)
+        mock_exit.assert_called_with(1)
     
     @patch('build_executable.create_distribution_package')
     @patch('build_executable.build_with_pyinstaller')

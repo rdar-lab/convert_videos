@@ -561,7 +561,7 @@ class VideoConverterGUI:
 
             try:
                 # Call centralized download function
-                handbrake_path, ffprobe_path, ffmpeg_path = dependencies_utils.download_dependencies(
+                handbrake_path, ffprobe_path, ffmpeg_path = dependencies_utils.download_dependencies(Path('dependencies'),
                     progress_callback)
 
                 if handbrake_path and ffprobe_path and ffmpeg_path:
@@ -621,7 +621,7 @@ class VideoConverterGUI:
         ffmpeg_path = self.ffmpeg_entry.get().strip()
 
         if handbrake_path:
-            success, error_type = configuration_manager.check_single_dependency(
+            success, error_type = dependencies_utils.check_single_dependency(
                 handbrake_path)
             if not success:
                 if error_type == "not_found":
@@ -633,7 +633,7 @@ class VideoConverterGUI:
                     errors.append(f"HandBrakeCLI timed out: {handbrake_path}")
 
         if ffprobe_path:
-            success, error_type = configuration_manager.check_single_dependency(
+            success, error_type = dependencies_utils.check_single_dependency(
                 ffprobe_path)
             if not success:
                 if error_type == "not_found":
@@ -645,7 +645,7 @@ class VideoConverterGUI:
                     errors.append(f"ffprobe timed out: {ffprobe_path}")
 
         if ffmpeg_path:
-            success, error_type = configuration_manager.check_single_dependency(
+            success, error_type = dependencies_utils.check_single_dependency(
                 ffmpeg_path)
             if not success:
                 if error_type == "not_found":
