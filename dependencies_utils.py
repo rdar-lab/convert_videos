@@ -12,10 +12,27 @@ import tarfile
 import urllib.request
 import zipfile
 from pathlib import Path
+import tempfile
 
 import subprocess_utils
 
+# Version constants for external tools
+HANDBRAKE_VERSION = '1.7.2'
+FFMPEG_VERSION = '6.1'
+
 logger = logging.getLogger(__name__)
+
+def get_platform():
+    """Detect the current platform."""
+    system = platform.system().lower()
+    if system == 'darwin':
+        return 'macos'
+    elif system == 'windows':
+        return 'windows'
+    elif system == 'linux':
+        return 'linux'
+    else:
+        raise RuntimeError(f"Unsupported platform: {system}")
 
 
 def get_bundled_path():
@@ -153,6 +170,408 @@ def check_single_dependency(command):
     return False, "invalid"
 
 
+def download_file(url, dest_path):
+    """Download a file from a URL to dest_path."""
+    logger.info(f"Downloading {url}...")
+    try:
+        with urllib.request.urlopen(url) as response:
+            with open(dest_path, 'wb') as out_file:
+                shutil.copyfileobj(response, out_file)
+        logger.info(f"Downloaded to {dest_path}")
+        return True
+    except (urllib.error.URLError, OSError, IOError) as e:
+        logger.error(f"Error downloading {url}: {repr(e)}")
+        return False
+
+
+def _is_within_directory(directory, target):
+    """
+    Return True if the target path is inside the given directory.
+    Prevents path traversal when extracting archives.
+    """
+    abs_directory = os.path.abspath(directory)
+    abs_target = os.path.abspath(target)
+
+    # Ensure both paths are normalized
+    abs_directory = os.path.normpath(abs_directory)
+    abs_target = os.path.normpath(abs_target)
+
+    # Use commonpath to check if both paths share the same prefix
+    try:
+        prefix = os.path.commonpath([abs_directory, abs_target])
+        # Target is within directory if commonpath equals directory
+        # This handles both subdirectories and the directory itself
+        return prefix == abs_directory
+    except ValueError:
+        # Paths are on different drives (Windows) or one is relative
+        return False
+
+
+def _safe_extract_tar(tar, extract_to):
+    """Safely extract members from a tarfile into extract_to."""
+    for member in tar.getmembers():
+        member_path = os.path.join(extract_to, member.name)
+        if not _is_within_directory(extract_to, member_path):
+            raise RuntimeError(f"Attempted path traversal in tar archive: {member.name}")
+    tar.extractall(extract_to)
+
+
+def _safe_extract_zip(zip_ref, extract_to):
+    """Safely extract members from a zipfile into extract_to."""
+    for member in zip_ref.infolist():
+        member_path = os.path.join(extract_to, member.filename)
+        if not _is_within_directory(extract_to, member_path):
+            raise RuntimeError(f"Attempted path traversal in zip archive: {member.filename}")
+    zip_ref.extractall(extract_to)
+
+
+def _safe_extract_dmg(mount_point, extract_to):
+    """Safely copy all files from mounted DMG to extract_to, validating against path traversal.
+
+    Args:
+        mount_point: Path to the mounted DMG directory
+        extract_to: Directory to extract files to
+    """
+    # Walk through all files in the mounted DMG
+    for root, dirs, files in os.walk(mount_point):
+        # Calculate relative path from mount point
+        rel_dir = os.path.relpath(root, mount_point)
+
+        # Normalize and validate the relative path doesn't contain .. components
+        rel_dir_normalized = os.path.normpath(rel_dir)
+
+        # Check if any path component is '..' which would indicate path traversal
+        if rel_dir_normalized.startswith('..') or os.path.isabs(rel_dir_normalized):
+            raise RuntimeError(f"Attempted path traversal in DMG archive: {rel_dir}")
+
+        # Also check if '..' appears in any component of the path
+        path_parts = Path(rel_dir_normalized).parts
+        if '..' in path_parts:
+            raise RuntimeError(f"Attempted path traversal in DMG archive: {rel_dir}")
+
+        # Create corresponding directory in extract_to
+        if rel_dir_normalized != '.':
+            dest_dir = os.path.join(extract_to, rel_dir_normalized)
+        else:
+            dest_dir = extract_to
+
+        # Validate destination directory against path traversal
+        if not _is_within_directory(extract_to, dest_dir):
+            raise RuntimeError(f"Attempted path traversal in DMG archive: {rel_dir}")
+
+        # Create directory if it doesn't exist
+        os.makedirs(dest_dir, exist_ok=True)
+
+        # Copy all files in this directory
+        for file in files:
+            # Validate filename doesn't contain path separators, null bytes, or control characters
+            if (os.path.sep in file or
+                (os.path.altsep and os.path.altsep in file) or
+                '\0' in file or
+                any(ord(c) < 32 for c in file)):
+                raise RuntimeError(f"Invalid filename in DMG archive: {file}")
+
+            src_file = os.path.join(root, file)
+            dest_file = os.path.join(dest_dir, file)
+
+            # Validate destination file against path traversal
+            if not _is_within_directory(extract_to, dest_file):
+                raise RuntimeError(f"Attempted path traversal in DMG archive: {os.path.join(rel_dir, file)}")
+
+            shutil.copy2(src_file, dest_file)
+
+
+def extract_dmg(dmg_path, extract_to):
+    """Extract contents from a macOS DMG file.
+
+    Args:
+        dmg_path: Path to the DMG file
+        extract_to: Directory to extract the contents to
+    """
+    mount_point = None
+    mount_successful = False
+    try:
+        # Create a unique temporary mount point
+        mount_point = tempfile.mkdtemp(prefix='dmg_mount_')
+
+        # Mount the DMG
+        logger.info(f"Mounting DMG: {dmg_path}")
+        result = subprocess.run(
+            ['hdiutil', 'attach', '-nobrowse', '-mountpoint', mount_point, str(dmg_path)],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode != 0:
+            logger.error(f"Failed to mount DMG: {result.stderr}")
+            raise RuntimeError(f"Failed to mount DMG: {result.stderr}")
+
+        mount_successful = True
+
+        # Extract all contents from mounted DMG with path traversal validation
+        _safe_extract_dmg(mount_point, extract_to)
+        logger.info(f"Extracted DMG contents to {extract_to}")
+    except subprocess.TimeoutExpired:
+        logger.error("Timeout while processing DMG file")
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting DMG: {repr(e)}")
+        raise
+    finally:
+        # Always unmount the DMG if mount was successful
+        if mount_successful and mount_point:
+            logger.info("Unmounting DMG...")
+            try:
+                detach_result = subprocess.run(['hdiutil', 'detach', mount_point],
+                             capture_output=True, timeout=10, text=True)
+                if detach_result.returncode != 0:
+                    logger.error(f"Failed to unmount DMG: {detach_result.stderr}")
+            except subprocess.TimeoutExpired:
+                logger.error("Timeout while unmounting DMG")
+            except Exception as e:
+                logger.error(f"Error unmounting DMG: {repr(e)}")
+
+        # Clean up temporary mount point directory if it exists
+        if mount_point and os.path.exists(mount_point):
+            try:
+                # Use rmtree to handle both empty and non-empty directories
+                shutil.rmtree(mount_point, ignore_errors=True)
+            except Exception as e:
+                logger.debug(f"Could not remove temporary mount directory {mount_point}: {e}")
+
+
+def extract_archive(archive_path, extract_to):
+    """Extract tar.gz, zip, dmg, or other archive safely.
+
+    Extracts all contents to extract_to directory with path traversal validation.
+    """
+
+    archive_path = str(archive_path)
+
+    logger.info(f"Extracting {archive_path}...")
+    if archive_path.endswith('.tar.gz') or archive_path.endswith('.tar.bz2') or archive_path.endswith('.tar.xz'):
+        with tarfile.open(archive_path, 'r:*') as tar:
+            _safe_extract_tar(tar, extract_to)
+    elif archive_path.endswith('.zip'):
+        with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+            _safe_extract_zip(zip_ref, extract_to)
+    elif archive_path.endswith('.dmg'):
+        # DMG extraction uses extract_dmg() which handles mounting and extracting entire archive
+        extract_dmg(archive_path, extract_to)
+        return
+    elif archive_path.endswith('.flatpak'):
+        # Flatpak files require the flatpak runtime and cannot be extracted as simple archives
+        raise ValueError(f"Flatpak files are not supported for extraction. Please install HandBrakeCLI via system package manager.")
+    else:
+        raise ValueError(f"Unsupported archive format: {archive_path}")
+
+    logger.info(f"Extracted to {extract_to}")
+
+
+def download_handbrake(tmpdir, download_dir):
+    """Download HandBrakeCLI for the specified platform.
+
+    Note:
+    - Windows: Downloads and extracts ZIP archive
+    - macOS: Downloads DMG and extracts entire archive, then locates CLI binary
+    - Linux: Auto-download not supported (flatpak requires runtime).
+             Users should install via package manager or manually bundle the binary.
+    """
+    handbrake_dir = tmpdir / 'handbrake'
+    handbrake_dir.mkdir(exist_ok=True)
+
+    platform_name = get_platform()
+
+    # HandBrake CLI download URLs and handling
+    if platform_name == 'windows':
+        url = f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-win-x86_64.zip'
+        archive_name = url.split('/')[-1]
+        archive_path = handbrake_dir / archive_name
+
+        if not download_file(url, archive_path):
+            return None
+
+        try:
+            extract_archive(archive_path, handbrake_dir)
+        except (ValueError, RuntimeError) as e:
+            logger.error(f"Failed to extract archive: {repr(e)}")
+            return None
+
+        # Find HandBrakeCLI.exe in extracted files
+        for root, dirs, files in os.walk(handbrake_dir):
+            if 'HandBrakeCLI.exe' in files:
+                shutil.copy(Path(root) / 'HandBrakeCLI.exe', download_dir / 'HandBrakeCLI.exe')
+                return download_dir / 'HandBrakeCLI.exe'
+
+    elif platform_name == 'macos':
+        url = f"https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrake-{HANDBRAKE_VERSION}.dmg"
+        archive_name = url.split('/')[-1]
+        archive_path = handbrake_dir / archive_name
+
+        if not download_file(url, archive_path):
+            return None
+
+        try:
+            # Extract entire DMG archive contents to temp directory
+            extract_archive(archive_path, handbrake_dir)
+        except (ValueError, RuntimeError) as e:
+            logger.error(f"Failed to extract DMG: {repr(e)}")
+            return None
+
+        # Find HandBrakeCLI in extracted files
+        for root, dirs, files in os.walk(handbrake_dir):
+            if 'HandBrakeCLI' in files:
+                shutil.copy(Path(root) / 'HandBrakeCLI', download_dir / 'HandBrakeCLI')
+                return download_dir / 'HandBrakeCLI'
+
+    elif platform_name == 'linux':
+        # Linux: HandBrake CLI is not available as a simple download
+        # The flatpak is for the GUI and requires flatpak runtime
+        # Try to find and use system-installed HandBrakeCLI
+        logger.info("HandBrakeCLI auto-download not supported on Linux.")
+        logger.info("Checking for system-installed HandBrakeCLI...")
+        system_handbrake = shutil.which('HandBrakeCLI')
+        if system_handbrake:
+            # Copy system binary to download_dir for bundling
+            handbrake_path = download_dir / 'HandBrakeCLI'
+            shutil.copy2(system_handbrake, handbrake_path)
+            logger.info(f"Using system HandBrakeCLI from: {system_handbrake}")
+            return handbrake_path
+        else:
+            logger.warning("HandBrakeCLI not found. Please install via: sudo apt-get install handbrake-cli")
+            return None
+    else:
+        logger.warning(f"Warning: HandBrakeCLI auto-download not supported for {platform_name}")
+        return None
+
+    logger.error("Unable to find HandBrakeCLI executable in downloaded archive")
+    return None
+
+
+def download_ffmpeg(tmpdir, download_dir):
+    """Download ffmpeg/ffprobe for the specified platform."""
+    ffmpeg_dir = tmpdir / 'ffmpeg'
+    ffmpeg_dir.mkdir(exist_ok=True)
+
+    # FFmpeg download URLs (static builds)
+    # Note: Windows and Linux use latest release, macOS uses versioned
+    urls = {
+        'windows': 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',  # Latest stable
+        'linux': 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz',  # Latest stable
+        'macos': {
+            'ffmpeg': f'https://evermeet.cx/ffmpeg/ffmpeg-{FFMPEG_VERSION}.zip',
+            'ffprobe': f'https://evermeet.cx/ffmpeg/ffprobe-{FFMPEG_VERSION}.zip'
+        }
+    }
+
+    platform_name = get_platform()
+
+    if platform_name not in urls:
+        logger.warning(f"FFmpeg auto-download not supported for {platform_name}")
+        return None, None
+
+    ffmpeg_bin = None
+    ffprobe_bin = None
+
+    # macOS requires separate downloads for ffmpeg and ffprobe
+    if platform_name == 'macos':
+        macos_urls = urls[platform_name]
+
+        # Download ffmpeg
+        ffmpeg_archive = ffmpeg_dir / 'ffmpeg.zip'
+        if download_file(macos_urls['ffmpeg'], ffmpeg_archive):
+            try:
+                extract_archive(ffmpeg_archive, ffmpeg_dir / 'ffmpeg_extract')
+            except (ValueError, RuntimeError) as e:
+                logger.error(f"Failed to extract ffmpeg archive: {repr(e)}")
+                ffmpeg_bin = None
+            else:
+                for root, dirs, files in os.walk(ffmpeg_dir / 'ffmpeg_extract'):
+                    if 'ffmpeg' in files:
+                        shutil.copy(Path(root) / 'ffmpeg', download_dir / 'ffmpeg')
+                        ffmpeg_bin = download_dir / 'ffmpeg'
+                        break
+
+        # Download ffprobe
+        ffprobe_archive = ffmpeg_dir / 'ffprobe.zip'
+        if download_file(macos_urls['ffprobe'], ffprobe_archive):
+            try:
+                extract_archive(ffprobe_archive, ffmpeg_dir / 'ffprobe_extract')
+            except (ValueError, RuntimeError) as e:
+                logger.error(f"Failed to extract ffprobe archive: {repr(e)}")
+                ffprobe_bin = None
+            else:
+                for root, dirs, files in os.walk(ffmpeg_dir / 'ffprobe_extract'):
+                    if 'ffprobe' in files:
+                        shutil.copy(Path(root) / 'ffprobe', download_dir / 'ffprobe')
+                        ffprobe_bin = download_dir / 'ffprobe'
+                        break
+
+        return ffmpeg_bin, ffprobe_bin
+
+    # Windows and Linux have both binaries in one archive
+    url = urls[platform_name]
+    archive_name = url.split('/')[-1]
+    archive_path = ffmpeg_dir / archive_name
+
+    if not download_file(url, archive_path):
+        # On Linux, try to find system-installed ffmpeg/ffprobe as fallback
+        if platform_name == 'linux':
+            logger.info("Download failed, checking for system-installed ffmpeg/ffprobe...")
+            system_ffmpeg = shutil.which('ffmpeg')
+            system_ffprobe = shutil.which('ffprobe')
+
+            if system_ffmpeg and system_ffprobe:
+                # Copy system binaries to download_dir for bundling
+                ffmpeg_bin = download_dir / 'ffmpeg'
+                ffprobe_bin = download_dir / 'ffprobe'
+                shutil.copy2(system_ffmpeg, ffmpeg_bin)
+                shutil.copy2(system_ffprobe, ffprobe_bin)
+                logger.info(f"Using system ffmpeg from: {system_ffmpeg}")
+                logger.info(f"Using system ffprobe from: {system_ffprobe}")
+                return ffmpeg_bin, ffprobe_bin
+            else:
+                logger.warning("ffmpeg/ffprobe not found. Please install via: sudo apt-get install ffmpeg")
+        return None, None
+
+    try:
+        extract_archive(archive_path, ffmpeg_dir)
+    except (ValueError, RuntimeError) as e:
+        logger.error(f"Failed to extract archive: {repr(e)}")
+        # On Linux, try to find system-installed ffmpeg/ffprobe as fallback
+        if platform_name == 'linux':
+            logger.info("Extraction failed, checking for system-installed ffmpeg/ffprobe...")
+            system_ffmpeg = shutil.which('ffmpeg')
+            system_ffprobe = shutil.which('ffprobe')
+
+            if system_ffmpeg and system_ffprobe:
+                # Copy system binaries to download_dir for bundling
+                ffmpeg_bin = download_dir / 'ffmpeg'
+                ffprobe_bin = download_dir / 'ffprobe'
+                shutil.copy2(system_ffmpeg, ffmpeg_bin)
+                shutil.copy2(system_ffprobe, ffprobe_bin)
+                logger.info(f"Using system ffmpeg from: {system_ffmpeg}")
+                logger.info(f"Using system ffprobe from: {system_ffprobe}")
+                return ffmpeg_bin, ffprobe_bin
+            else:
+                logger.warning("ffmpeg/ffprobe not found. Please install via: sudo apt-get install ffmpeg")
+        return None, None
+    exe_suffix = '.exe' if platform_name == 'windows' else ''
+
+    # Find ffmpeg and ffprobe binaries
+    for root, dirs, files in os.walk(ffmpeg_dir):
+        if f'ffmpeg{exe_suffix}' in files and not ffmpeg_bin:
+            shutil.copy(Path(root) / f'ffmpeg{exe_suffix}', download_dir / f'ffmpeg{exe_suffix}')
+            ffmpeg_bin = download_dir / f'ffmpeg{exe_suffix}'
+        if f'ffprobe{exe_suffix}' in files and not ffprobe_bin:
+            shutil.copy(Path(root) / f'ffprobe{exe_suffix}', download_dir / f'ffprobe{exe_suffix}')
+            ffprobe_bin = download_dir / f'ffprobe{exe_suffix}'
+
+    return ffmpeg_bin, ffprobe_bin
+
+
+
 def download_dependencies(deps_dir, progress_callback=None):
     """
     Download HandBrakeCLI, ffprobe, and ffmpeg to deps_dir directory.
@@ -165,8 +584,8 @@ def download_dependencies(deps_dir, progress_callback=None):
         tuple: (handbrake_path, ffprobe_path, ffmpeg_path) as strings, or (None, None, None) on failure
     """
     try:
+
         system = platform.system()
-        machine = platform.machine().lower()
 
         # Create dependencies directory
         deps_dir.mkdir(exist_ok=True)
@@ -208,186 +627,34 @@ def download_dependencies(deps_dir, progress_callback=None):
                     progress_callback(msg)
                 logger.info(msg)
 
-        # Determine URLs based on platform
-        if system == "Windows":
-            handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-win-x86_64.zip"
-            ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-        elif system == "Darwin":  # macOS
-            if "arm" in machine or "aarch64" in machine:
-                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-arm64.dmg"
-            else:
-                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.dmg"
-            ffmpeg_url = "https://evermeet.cx/ffmpeg/ffmpeg-6.1.zip"
-        elif system == "Linux":
-            if "arm" in machine or "aarch64" in machine:
-                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-aarch64.flatpak"
-                ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz"
-            else:
-                handbrake_url = "https://github.com/HandBrake/HandBrake/releases/download/1.7.2/HandBrakeCLI-1.7.2-x86_64.flatpak"
-                ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-        else:
-            raise Exception(f"Unsupported platform: {system}")
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpdir = Path(tmpdirname)
 
-        # Download HandBrakeCLI
-        msg = f"Downloading HandBrakeCLI for {system}..."
-        if progress_callback:
-            progress_callback(msg)
-        logger.info(msg)
-
-        handbrake_archive = deps_dir / \
-            f"handbrake.{handbrake_url.split('.')[-1]}"
-
-        try:
-            urllib.request.urlretrieve(handbrake_url, handbrake_archive)
-        except Exception as e:
-            raise Exception(f"Failed to download HandBrakeCLI: {repr(e)}")
-
-        # Extract HandBrakeCLI
-        msg = "Extracting HandBrakeCLI..."
-        if progress_callback:
-            progress_callback(msg)
-        logger.info(msg)
-
-        try:
-            if handbrake_archive.suffix == ".zip":
-                with zipfile.ZipFile(handbrake_archive, 'r') as zip_ref:
-                    zip_ref.extractall(deps_dir / "handbrake_temp")
-                # Find HandBrakeCLI executable in extracted files
-                handbrake_found = False
-                for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
-                    if handbrake_exe in files:
-                        shutil.copy2(Path(root) / handbrake_exe,
-                                     deps_dir / handbrake_exe)
-                        handbrake_found = True
-                        break
-                if not handbrake_found:
-                    raise Exception(
-                        f"Could not find {handbrake_exe} in downloaded archive")
-                shutil.rmtree(deps_dir / "handbrake_temp")
-            elif handbrake_archive.suffix in [".tar", ".xz", ".gz"]:
-                with tarfile.open(handbrake_archive, 'r:*') as tar_ref:
-                    tar_ref.extractall(deps_dir / "handbrake_temp")
-                # Find HandBrakeCLI executable
-                handbrake_found = False
-                for root, dirs, files in os.walk(deps_dir / "handbrake_temp"):
-                    if handbrake_exe in files:
-                        shutil.copy2(Path(root) / handbrake_exe,
-                                     deps_dir / handbrake_exe)
-                        handbrake_found = True
-                        break
-                if not handbrake_found:
-                    raise Exception(
-                        f"Could not find {handbrake_exe} in downloaded archive")
-                temp_dir = deps_dir / "handbrake_temp"
-                if temp_dir.exists():
-                    shutil.rmtree(temp_dir)
-            else:
-                # For formats like .dmg or .flatpak, just inform user
-                raise Exception(
-                    f"HandBrakeCLI format {handbrake_archive.suffix} requires manual installation on {system}")
-        except Exception as e:
-            logger.error(f"HandBrakeCLI extraction error: {repr(e)}")
-            msg = f"HandBrakeCLI extraction failed: {repr(e)}"
+            # Download HandBrakeCLI
+            msg = f"Downloading HandBrakeCLI for {system}..."
             if progress_callback:
                 progress_callback(msg)
-            return (None, None, None)
-        finally:
-            if handbrake_archive.exists():
-                handbrake_archive.unlink()
+            logger.info(msg)
 
-        # Download ffmpeg (includes ffprobe)
-        msg = f"Downloading ffmpeg for {system}..."
-        if progress_callback:
-            progress_callback(msg)
-        logger.info(msg)
+            handbrake_path = download_handbrake(tmpdir, deps_dir)
+            if handbrake_path is None:
+                raise Exception('Failed to download or find HandBrakeCLI')
 
-        ffmpeg_archive = deps_dir / f"ffmpeg.{ffmpeg_url.split('.')[-1]}"
-
-        try:
-            urllib.request.urlretrieve(ffmpeg_url, ffmpeg_archive)
-        except Exception as e:
-            raise Exception(f"Failed to download ffmpeg: {repr(e)}")
-
-        # Extract ffmpeg/ffprobe
-        msg = "Extracting ffmpeg..."
-        if progress_callback:
-            progress_callback(msg)
-        logger.info(msg)
-
-        try:
-            if ffmpeg_archive.suffix == ".zip":
-                with zipfile.ZipFile(ffmpeg_archive, 'r') as zip_ref:
-                    zip_ref.extractall(deps_dir / "ffmpeg_temp")
-                # Find ffprobe and ffmpeg executables (often in bin subdirectory)
-                ffprobe_found = False
-                ffmpeg_found = False
-                for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
-                    if ffprobe_exe in files and not ffprobe_found:
-                        shutil.copy2(Path(root) / ffprobe_exe,
-                                     deps_dir / ffprobe_exe)
-                        ffprobe_found = True
-                    if ffmpeg_exe in files and not ffmpeg_found:
-                        shutil.copy2(Path(root) / ffmpeg_exe,
-                                     deps_dir / ffmpeg_exe)
-                        ffmpeg_found = True
-                    if ffprobe_found and ffmpeg_found:
-                        break
-                if not ffprobe_found:
-                    raise Exception(
-                        f"Could not find {ffprobe_exe} in downloaded archive")
-                if not ffmpeg_found:
-                    raise Exception(
-                        f"Could not find {ffmpeg_exe} in downloaded archive")
-                temp_dir = deps_dir / "ffmpeg_temp"
-                if temp_dir.exists():
-                    shutil.rmtree(temp_dir)
-            elif ffmpeg_archive.suffix in [".tar", ".xz", ".gz"]:
-                with tarfile.open(ffmpeg_archive, 'r:*') as tar_ref:
-                    tar_ref.extractall(deps_dir / "ffmpeg_temp")
-                # Find ffprobe and ffmpeg executables (often in bin subdirectory)
-                ffprobe_found = False
-                ffmpeg_found = False
-                for root, dirs, files in os.walk(deps_dir / "ffmpeg_temp"):
-                    if ffprobe_exe in files and not ffprobe_found:
-                        shutil.copy2(Path(root) / ffprobe_exe,
-                                     deps_dir / ffprobe_exe)
-                        ffprobe_found = True
-                    if ffmpeg_exe in files and not ffmpeg_found:
-                        shutil.copy2(Path(root) / ffmpeg_exe,
-                                     deps_dir / ffmpeg_exe)
-                        ffmpeg_found = True
-                    if ffprobe_found and ffmpeg_found:
-                        break
-                if not ffprobe_found:
-                    raise Exception(
-                        f"Could not find {ffprobe_exe} in downloaded archive")
-                if not ffmpeg_found:
-                    raise Exception(
-                        f"Could not find {ffmpeg_exe} in downloaded archive")
-                temp_dir = deps_dir / "ffmpeg_temp"
-                if temp_dir.exists():
-                    shutil.rmtree(temp_dir)
-            else:
-                raise Exception(
-                    f"ffmpeg format {ffmpeg_archive.suffix} not supported")
-        except Exception as e:
-            logger.error(f"ffmpeg extraction error: {repr(e)}")
-            msg = f"ffmpeg extraction failed: {repr(e)}"
+            # Download ffmpeg (includes ffprobe)
+            msg = f"Downloading ffmpeg/ffprobe for {system}..."
             if progress_callback:
                 progress_callback(msg)
-            return (None, None, None)
-        finally:
-            if ffmpeg_archive.exists():
-                ffmpeg_archive.unlink()
+            logger.info(msg)
+
+            ffmpeg_path, ffprobe_path = download_ffmpeg(tmpdir, deps_dir)
+            if ffmpeg_path is None or ffprobe_path is None:
+                raise Exception('Failed to download or find ffmpeg/ffprobe')
 
         # Make executables executable on Unix-like systems
         if system in ["Linux", "Darwin"]:
-            if handbrake_path.exists():
-                os.chmod(handbrake_path, 0o755)
-            if ffprobe_path.exists():
-                os.chmod(ffprobe_path, 0o755)
-            if ffmpeg_path.exists():
-                os.chmod(ffmpeg_path, 0o755)
+            os.chmod(str(handbrake_path), 0o755)
+            os.chmod(str(ffprobe_path), 0o755)
+            os.chmod(str(ffmpeg_path), 0o755)
 
         msg = f"Dependencies downloaded successfully to {deps_dir}"
         if progress_callback:
