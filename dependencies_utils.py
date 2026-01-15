@@ -213,8 +213,74 @@ def _safe_extract_zip(zip_ref, extract_to):
     zip_ref.extractall(extract_to)
 
 
+def extract_dmg(dmg_path, extract_to):
+    """Extract HandBrakeCLI from a macOS DMG file.
+    
+    Args:
+        dmg_path: Path to the DMG file
+        extract_to: Directory to extract the CLI binary to
+        
+    Returns:
+        Path to extracted HandBrakeCLI binary, or None if extraction failed
+    """
+    mount_point = None
+    try:
+        # Create a unique temporary mount point
+        mount_point = tempfile.mkdtemp(prefix='handbrake_mount_')
+        
+        # Mount the DMG
+        logger.info(f"Mounting DMG: {dmg_path}")
+        result = subprocess.run(
+            ['hdiutil', 'attach', '-nobrowse', '-mountpoint', mount_point, str(dmg_path)],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"Failed to mount DMG: {result.stderr}")
+            return None
+        
+        try:
+            # Look for HandBrakeCLI in the mounted app bundle
+            app_path = Path(mount_point) / 'HandBrake.app' / 'Contents' / 'MacOS' / 'HandBrakeCLI'
+            if app_path.exists():
+                dest_path = Path(extract_to) / 'HandBrakeCLI'
+                shutil.copy2(app_path, dest_path)
+                logger.info(f"Extracted HandBrakeCLI to {dest_path}")
+                return dest_path
+            else:
+                logger.error(f"HandBrakeCLI not found in expected location: {app_path}")
+                return None
+        finally:
+            # Always unmount the DMG
+            logger.info("Unmounting DMG...")
+            detach_result = subprocess.run(['hdiutil', 'detach', mount_point], 
+                         capture_output=True, timeout=10, text=True)
+            if detach_result.returncode != 0:
+                logger.error(f"Failed to unmount DMG: {detach_result.stderr}")
+    except subprocess.TimeoutExpired:
+        logger.error("Timeout while processing DMG file")
+        return None
+    except Exception as e:
+        logger.error(f"Error extracting DMG: {repr(e)}")
+        return None
+    finally:
+        # Clean up temporary mount point directory if it exists
+        if mount_point and os.path.exists(mount_point):
+            try:
+                os.rmdir(mount_point)
+            except OSError as e:
+                # Directory might not be empty or already removed
+                logger.debug(f"Could not remove temporary mount directory {mount_point}: {e}")
+
+
 def extract_archive(archive_path, extract_to):
-    """Extract tar.gz, zip, or other archive safely."""
+    """Extract tar.gz, zip, dmg, or other archive safely.
+    
+    For DMG files, extracts HandBrakeCLI binary from the app bundle directly to extract_to.
+    For other archives, extracts all contents to extract_to directory.
+    """
 
     archive_path = str(archive_path)
 
@@ -225,50 +291,81 @@ def extract_archive(archive_path, extract_to):
     elif archive_path.endswith('.zip'):
         with zipfile.ZipFile(archive_path, 'r') as zip_ref:
             _safe_extract_zip(zip_ref, extract_to)
+    elif archive_path.endswith('.dmg'):
+        # DMG extraction uses extract_dmg() which handles mounting and extracting from app bundle
+        result = extract_dmg(archive_path, extract_to)
+        if result is None:
+            raise ValueError(f"Failed to extract HandBrakeCLI from DMG: {archive_path}")
+        # extract_dmg logs its own success message, so we don't need to log again
+        return
+    elif archive_path.endswith('.flatpak'):
+        # Flatpak files require the flatpak runtime and cannot be extracted as simple archives
+        raise ValueError(f"Flatpak files are not supported for extraction. Please install HandBrakeCLI via system package manager.")
     else:
         raise ValueError(f"Unsupported archive format: {archive_path}")
+    
     logger.info(f"Extracted to {extract_to}")
 
 
 def download_handbrake(tmpdir, download_dir):
     """Download HandBrakeCLI for the specified platform.
     
-    Note: For Linux and macOS, this relies on system installation or manual bundling
-    as HandBrake doesn't provide easily extractable binaries for these platforms.
+    Note: 
+    - Windows: Downloads and extracts ZIP archive
+    - macOS: Downloads DMG and extracts CLI from app bundle
+    - Linux: Auto-download not supported (flatpak requires runtime). 
+             Users should install via package manager or manually bundle the binary.
     """
     handbrake_dir = tmpdir / 'handbrake'
     handbrake_dir.mkdir(exist_ok=True)
     
-    # HandBrake CLI download URLs
-    urls = {
-        'windows': f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-win-x86_64.zip',
-        'linux': "https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-x86_64.flatpak",
-        'macos': "https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}.dmg"
-    }
-
     platform_name = get_platform()
     
-    if platform_name not in urls:
-        logger.warning(f"Warning: HandBrakeCLI auto-download not supported for {platform_name}")
-        return None
-    
-    url = urls[platform_name]
-    archive_name = url.split('/')[-1]
-    archive_path = handbrake_dir / archive_name
-    
-    if not download_file(url, archive_path):
-        return None
-    extract_archive(archive_path, handbrake_dir)
-    # Find HandBrakeCLI.exe
-    for root, dirs, files in os.walk(handbrake_dir):
-        if platform_name == 'windows':
+    # HandBrake CLI download URLs and handling
+    if platform_name == 'windows':
+        url = f'https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}-win-x86_64.zip'
+        archive_name = url.split('/')[-1]
+        archive_path = handbrake_dir / archive_name
+        
+        if not download_file(url, archive_path):
+            return None
+        
+        extract_archive(archive_path, handbrake_dir)
+        
+        # Find HandBrakeCLI.exe in extracted files
+        for root, dirs, files in os.walk(handbrake_dir):
             if 'HandBrakeCLI.exe' in files:
                 shutil.copy(Path(root) / 'HandBrakeCLI.exe', download_dir / 'HandBrakeCLI.exe')
                 return download_dir / 'HandBrakeCLI.exe'
-        else:
+                
+    elif platform_name == 'macos':
+        url = f"https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrake-{HANDBRAKE_VERSION}.dmg"
+        archive_name = url.split('/')[-1]
+        archive_path = handbrake_dir / archive_name
+        
+        if not download_file(url, archive_path):
+            return None
+        
+        # Extract HandBrakeCLI from DMG to temp directory (extract_archive handles DMG internally)
+        extract_archive(archive_path, handbrake_dir)
+        
+        # Find HandBrakeCLI in extracted files
+        for root, dirs, files in os.walk(handbrake_dir):
             if 'HandBrakeCLI' in files:
                 shutil.copy(Path(root) / 'HandBrakeCLI', download_dir / 'HandBrakeCLI')
                 return download_dir / 'HandBrakeCLI'
+            
+    elif platform_name == 'linux':
+        # Linux: HandBrake CLI is not available as a simple download
+        # The flatpak is for the GUI and requires flatpak runtime
+        # Users should install via: apt-get install handbrake-cli
+        logger.warning("HandBrakeCLI auto-download not supported on Linux.")
+        logger.warning("Please install via package manager: sudo apt-get install handbrake-cli")
+        logger.warning("Or manually place HandBrakeCLI binary in the build directory.")
+        return None
+    else:
+        logger.warning(f"Warning: HandBrakeCLI auto-download not supported for {platform_name}")
+        return None
 
     logger.error("Was unable to find HandBrakeCLI executable in binary")
     return None
@@ -320,7 +417,7 @@ def download_ffmpeg(tmpdir, download_dir):
             for root, dirs, files in os.walk(ffmpeg_dir / 'ffprobe_extract'):
                 if 'ffprobe' in files:
                     shutil.copy(Path(root) / 'ffprobe', download_dir / 'ffprobe')
-                    ffprobe_bin = Path(root) / 'ffprobe'
+                    ffprobe_bin = download_dir / 'ffprobe'
                     break
         
         return ffmpeg_bin, ffprobe_bin
@@ -331,7 +428,7 @@ def download_ffmpeg(tmpdir, download_dir):
     archive_path = ffmpeg_dir / archive_name
     
     if not download_file(url, archive_path):
-        return None
+        return None, None
     
     extract_archive(archive_path, ffmpeg_dir)
     exe_suffix = '.exe' if platform_name == 'windows' else ''
@@ -345,7 +442,7 @@ def download_ffmpeg(tmpdir, download_dir):
             shutil.copy(Path(root) / f'ffprobe{exe_suffix}', download_dir / f'ffprobe{exe_suffix}')
             ffprobe_bin = download_dir / f'ffprobe{exe_suffix}'
     
-    return ffmpeg_bin,ffprobe_bin
+    return ffmpeg_bin, ffprobe_bin
 
 
 
@@ -415,7 +512,19 @@ def download_dependencies(deps_dir, progress_callback=None):
 
             handbrake_path = download_handbrake(tmpdir, deps_dir)
             if handbrake_path is None:
-                raise Exception('Was unable to download handbrake') 
+                # On Linux, try to find system-installed HandBrakeCLI
+                if system == "Linux":
+                    logger.info("Download not available on Linux, checking for system-installed HandBrakeCLI...")
+                    system_handbrake = shutil.which('HandBrakeCLI')
+                    if system_handbrake:
+                        # Copy system binary to deps_dir for bundling
+                        handbrake_path = deps_dir / 'HandBrakeCLI'
+                        shutil.copy2(system_handbrake, handbrake_path)
+                        logger.info(f"Using system HandBrakeCLI from: {system_handbrake}")
+                    else:
+                        raise Exception('HandBrakeCLI not found. Please install via: sudo apt-get install handbrake-cli')
+                else:
+                    raise Exception('Was unable to download handbrake') 
 
             # Download ffmpeg (includes ffprobe)
             msg = f"Downloading ffmpeg/ffprobe for {system}..."
@@ -425,7 +534,24 @@ def download_dependencies(deps_dir, progress_callback=None):
 
             ffmpeg_path,ffprobe_path = download_ffmpeg(tmpdir, deps_dir)
             if ffmpeg_path is None or ffprobe_path is None:
-                raise Exception('Was unable to download ffmpeg') 
+                # On Linux, try to find system-installed ffmpeg/ffprobe
+                if system == "Linux":
+                    logger.info("Download not available, checking for system-installed ffmpeg/ffprobe...")
+                    system_ffmpeg = shutil.which('ffmpeg')
+                    system_ffprobe = shutil.which('ffprobe')
+
+                    if system_ffmpeg and system_ffprobe:
+                        # Copy system binaries to deps_dir for bundling
+                        ffmpeg_path = deps_dir / 'ffmpeg'
+                        ffprobe_path = deps_dir / 'ffprobe'
+                        shutil.copy2(system_ffmpeg, ffmpeg_path)
+                        shutil.copy2(system_ffprobe, ffprobe_path)
+                        logger.info(f"Using system ffmpeg from: {system_ffmpeg}")
+                        logger.info(f"Using system ffprobe from: {system_ffprobe}")
+                    else:
+                        raise Exception('ffmpeg/ffprobe not found. Please install via: sudo apt-get install ffmpeg')
+                else:
+                    raise Exception('Was unable to download ffmpeg') 
 
         # Make executables executable on Unix-like systems
         if system in ["Linux", "Darwin"]:
