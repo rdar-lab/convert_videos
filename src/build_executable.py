@@ -115,14 +115,16 @@ binaries = []
     # Build hiddenimports list - external packages plus src modules
     hiddenimports_str = repr(['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk'] + src_modules)
     
+    # Calculate the absolute path to src directory now (relative to repository root)
+    # The spec file will be created in the repository root, so src is a sibling directory
+    repo_root = Path(__file__).parent.parent
+    src_abs_path = str(repo_root / 'src')
+    
     spec_content += f"""
 import os
-from pathlib import Path
 
-# Get absolute path to src directory for imports
-# Use script location to find src, not current working directory
-script_dir = Path(__file__).parent
-src_dir = str(script_dir / 'src')
+# Absolute path to src directory for imports
+src_dir = {repr(src_abs_path)}
 
 a = Analysis(
     ['{script_name}'],
