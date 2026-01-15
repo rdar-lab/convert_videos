@@ -199,6 +199,8 @@ def _is_within_directory(directory, target):
     # Use commonpath to check if both paths share the same prefix
     try:
         prefix = os.path.commonpath([abs_directory, abs_target])
+        # Target is within directory if commonpath equals directory
+        # This handles both subdirectories and the directory itself
         return prefix == abs_directory
     except ValueError:
         # Paths are on different drives (Windows) or one is relative
@@ -333,15 +335,9 @@ def extract_dmg(dmg_path, extract_to):
         # Clean up temporary mount point directory if it exists
         if mount_point and os.path.exists(mount_point):
             try:
-                # Use rmdir only if directory is empty, otherwise use rmtree
-                if os.path.isdir(mount_point):
-                    if not os.listdir(mount_point):
-                        os.rmdir(mount_point)
-                    else:
-                        # Directory not empty, likely unmount failed
-                        logger.warning(f"Mount directory not empty, attempting force removal: {mount_point}")
-                        shutil.rmtree(mount_point, ignore_errors=True)
-            except OSError as e:
+                # Use rmtree to handle both empty and non-empty directories
+                shutil.rmtree(mount_point, ignore_errors=True)
+            except Exception as e:
                 logger.debug(f"Could not remove temporary mount directory {mount_point}: {e}")
 
 
