@@ -73,6 +73,14 @@ def create_spec_file(platform_name, binaries_data, script_name='convert_videos.p
         exe_name: Name for the output executable (default: 'convert_videos')
         console: Whether to show console window (default: True for CLI, False for GUI)
     """
+    # Discover all Python modules in src directory
+    src_dir = Path(__file__).parent
+    src_modules = []
+    for py_file in src_dir.glob('*.py'):
+        if py_file.name != '__init__.py':
+            module_name = py_file.stem
+            src_modules.append(module_name)
+    
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
@@ -104,21 +112,24 @@ binaries = []
                 ffprobe_path = repr(ffprobe_binary)
                 spec_content += f"binaries.append(({ffprobe_path}, '.'))\n"
 
+    # Build hiddenimports list - external packages plus src modules
+    hiddenimports_str = repr(['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk'] + src_modules)
+    
     spec_content += f"""
 import os
+from pathlib import Path
 
 # Get absolute path to src directory for imports
-src_dir = os.path.abspath('src')
+# Use script location to find src, not current working directory
+script_dir = Path(__file__).parent
+src_dir = str(script_dir / 'src')
 
 a = Analysis(
     ['{script_name}'],
     pathex=[src_dir],
     binaries=binaries,
     datas=datas,
-    hiddenimports=['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk',
-                   'configuration_manager', 'convert_videos', 'convert_videos_cli',
-                   'convert_videos_gui', 'dependencies_utils', 'duplicate_detector',
-                   'logging_utils', 'subprocess_utils', 'build_executable'],
+    hiddenimports={hiddenimports_str},
     hookspath=[],
     hooksconfig={{}},
     runtime_hooks=[],
