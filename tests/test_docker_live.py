@@ -63,7 +63,7 @@ class TestDockerLive(unittest.TestCase):
         try:
             # Get the static test video file from test_fixtures
             repo_path = Path(__file__).parent.absolute()
-            static_video = repo_path / 'test_fixtures' / 'test_video.mp4'
+            static_video = repo_path / 'tests' / 'test_fixtures' / 'test_video.mp4'
             
             if not static_video.exists():
                 print(f"✗ Static test video not found: {static_video}")
