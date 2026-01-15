@@ -35,6 +35,9 @@ COPY src /usr/local/lib/convert_videos/src
 # Set working directory
 WORKDIR /usr/local/lib/convert_videos
 
+# Ensure Python can find the src package
+ENV PYTHONPATH=/usr/local/lib/convert_videos:$PYTHONPATH
+
 # Copy entrypoint script to /usr/local/bin
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
