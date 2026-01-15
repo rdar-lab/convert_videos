@@ -24,10 +24,11 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Install Chocolatey packages
+    - name: Install system dependencies
       run: |
-        choco install ffmpeg handbrake-cli -y
-
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg handbrake-cli
+    
     - name: Build executable
       run: |
         python build_executable.py --platform linux
