@@ -410,7 +410,7 @@ def download_handbrake(tmpdir, download_dir):
                 return download_dir / 'HandBrakeCLI.exe'
 
     elif platform_name == 'macos':
-        url = f"https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrake-{HANDBRAKE_VERSION}.dmg"
+        url = f"https://github.com/HandBrake/HandBrake/releases/download/{HANDBRAKE_VERSION}/HandBrakeCLI-{HANDBRAKE_VERSION}.dmg"
         archive_name = url.split('/')[-1]
         archive_path = handbrake_dir / archive_name
 
