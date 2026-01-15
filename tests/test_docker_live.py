@@ -312,7 +312,7 @@ class TestDockerLive(unittest.TestCase):
         6. Clean up
         """
         # Setup
-        repo_path = Path(__file__).parent.absolute()
+        repo_path = Path(__file__).parent.parent.absolute()  # Go up to repo root
         image_tag = 'convert_videos_test:latest'
         container_name = 'convert_videos_test_container'
         
