@@ -580,22 +580,46 @@ class TestDockerLive(unittest.TestCase):
                 # Check that duplicates were found in the output
                 output = result.stdout + result.stderr
                 
-                # The duplicate detector should find duplicates
-                self.assertIn('duplicate', output.lower(), 
-                             "Expected 'duplicate' to be mentioned in output")
+                # Verify exit code (should be 0 for success)
+                self.assertEqual(result.returncode, 0, 
+                               f"Container exited with unexpected code: {result.returncode}")
                 
-                # Should mention finding duplicate groups
-                if 'found' in output.lower() and 'duplicate' in output.lower():
-                    print("✓ Duplicate detection output found in logs")
-                elif 'no duplications found' in output.lower():
-                    # This is acceptable too if the videos are too short/different
-                    print("⚠ No duplications reported (videos may be too short for reliable hashing)")
-                else:
-                    print("⚠ Unexpected output format")
+                # Verify that duplicate groups were found
+                self.assertIn('found 1 duplicate group', output.lower(), 
+                             "Expected to find exactly 1 duplicate group")
+                print("✓ Found 1 duplicate group as expected")
                 
-                # Verify no crash (exit code 0 or standard exit)
-                self.assertIn(result.returncode, [0], 
-                             f"Container exited with unexpected code: {result.returncode}")
+                # Verify that both video files are mentioned in the output
+                self.assertIn('video1.mp4', output, 
+                             "Expected video1.mp4 to be in duplicate group")
+                self.assertIn('video2.mp4', output, 
+                             "Expected video2.mp4 to be in duplicate group")
+                print(f"✓ Both videos (video1.mp4 and video2.mp4) found in duplicate group")
+                
+                # Verify that a comparison thumbnail was generated and is mentioned
+                self.assertIn('Comparison Thumbnail:', output, 
+                             "Expected comparison thumbnail to be generated")
+                print("✓ Comparison thumbnail was generated")
+                
+                # Extract and validate thumbnail path from output
+                thumbnail_lines = [line for line in output.split('\n') if 'Comparison Thumbnail:' in line]
+                self.assertGreater(len(thumbnail_lines), 0, 
+                                 "Expected at least one comparison thumbnail line in output")
+                
+                # Extract path from line like "Comparison Thumbnail: /tmp/comparison_abc123.jpg"
+                thumbnail_path_str = thumbnail_lines[0].split('Comparison Thumbnail:')[1].strip()
+                
+                # Validate the thumbnail path is not empty and looks like a valid file path
+                self.assertTrue(len(thumbnail_path_str) > 0, 
+                              "Comparison thumbnail path is empty")
+                self.assertTrue(thumbnail_path_str.endswith('.jpg'), 
+                              f"Comparison thumbnail path should end with .jpg: {thumbnail_path_str}")
+                self.assertIn('comparison', thumbnail_path_str.lower(), 
+                            f"Comparison thumbnail path should contain 'comparison': {thumbnail_path_str}")
+                
+                print(f"✓ Comparison thumbnail path validated: {thumbnail_path_str}")
+                print(f"  Note: Thumbnail created inside container (not accessible from host)")
+
                 
                 print("\n" + "="*60)
                 print("✓ DUPLICATE DETECTOR DOCKER TEST PASSED")
