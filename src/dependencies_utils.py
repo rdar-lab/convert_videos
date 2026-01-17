@@ -100,6 +100,30 @@ def find_dependency_path(dependency_name, config_path=None):
     return result
 
 
+def get_dependencies_path(dependencies_config = None):
+    if dependencies_config is None:
+        dependencies_config {
+                'handbrake': 'HandBrakeCLI',
+                'ffprobe': 'ffprobe',
+                'ffmpeg': 'ffmpeg'
+            }
+
+    dependencies_config['handbrake'] = find_dependency_path(
+        'HandBrakeCLI',
+        dependencies_config.get('handbrake')
+    )
+    dependencies_config['ffprobe'] = find_dependency_path(
+        'ffprobe',
+        dependencies_config.get('ffprobe')
+    )
+    dependencies_config['ffmpeg'] = find_dependency_path(
+        'ffmpeg',
+        dependencies_config.get('ffmpeg')
+    )
+
+    return dependencies_config
+    
+
 def validate_dependencies(dependency_paths=None):
     """Check if required dependencies are installed.
 
@@ -111,11 +135,7 @@ def validate_dependencies(dependency_paths=None):
         Paths should already be resolved by load_config() to handle PyInstaller bundles.
     """
     if dependency_paths is None:
-        dependency_paths = {
-            'handbrake': 'HandBrakeCLI',
-            'ffprobe': 'ffprobe',
-            'ffmpeg': 'ffmpeg'
-        }
+        dependency_paths = get_dependencies_path()
 
     dependencies = {
         'ffprobe': dependency_paths.get('ffprobe', 'ffprobe'),

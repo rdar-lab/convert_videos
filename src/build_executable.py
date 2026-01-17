@@ -204,12 +204,22 @@ def create_distribution_package(platform_name):
     # Check for both executables
     cli_exe_name = f'convert_videos_cli{exe_extension}'
     gui_exe_name = f'convert_videos_gui{exe_extension}'
+    dd_exe_name = f'duplicate_detector{exe_extension}'
     cli_exe_path = dist_dir / cli_exe_name
     gui_exe_path = dist_dir / gui_exe_name
+    dd_exe_path = dist_dir / dd_exe_name
 
     if not cli_exe_path.exists():
         logger.error(f"Error: CLI executable not found at {cli_exe_path}")
-        return None
+        sys.exit(1)
+
+    if not dd_exe_path.exists():
+        logger.error(f"Error: DD executable not found at {dd_exe_path}")
+        sys.exit(1)
+
+    if not gui_exe_path.exists():
+        logger.error(f"Error: CLI executable not found at {cli_exe_path}")
+        sys.exit(1)
 
     # Create package directory
     package_name = f'convert_videos-{platform_name}'
@@ -220,12 +230,12 @@ def create_distribution_package(platform_name):
     shutil.copy2(cli_exe_path, package_dir / cli_exe_name)
     logger.info(f"Packaged CLI executable: {cli_exe_name}")
 
-    # Copy GUI executable if it exists
-    if gui_exe_path.exists():
-        shutil.copy2(gui_exe_path, package_dir / gui_exe_name)
-        logger.info(f"Packaged GUI executable: {gui_exe_name}")
-    else:
-        logger.warning(f"GUI executable not found at {gui_exe_path}, skipping")
+    shutil.copy2(dd_exe_path, package_dir / dd_exe_name)
+    logger.info(f"Packaged DD executable: {dd_exe_name}")
+
+
+    shutil.copy2(gui_exe_path, package_dir / gui_exe_name)
+    logger.info(f"Packaged GUI executable: {gui_exe_name}")
 
     # Copy documentation files from repo root
     for doc in DOCS_TO_INCLUDE:
@@ -301,6 +311,15 @@ def main():
         console=True
     )
 
+    # CLI version of duplicate detector
+    spec_file_duplicate_detector = create_spec_file(
+        target_platform,
+        binaries_data,
+        script_name='duplicate_detector.py',
+        exe_name='duplicate_detector',
+        console=True
+    )
+
     # GUI version without console
     spec_file_gui = create_spec_file(
         target_platform,
@@ -310,12 +329,19 @@ def main():
         console=False
     )
 
-    # Build both executables with PyInstaller
+    # Build executables with PyInstaller
     logger.info("Building CLI executable...")
     cli_success = build_with_pyinstaller(spec_file_cli)
 
     if not cli_success:
         logger.error("[FAILED] CLI build failed!")
+        sys.exit(1)
+
+    logger.info("Building Duplicate Detector executable...")
+    dup_dd_success = build_with_pyinstaller(spec_file_duplicate_detector)
+
+    if not dup_dd_success:
+        logger.error("[FAILED] DupDetector build failed!")
         sys.exit(1)
 
     logger.info("Building GUI executable...")
@@ -333,8 +359,8 @@ def main():
     exe_extension = '.exe' if target_platform == 'windows' else ''
     logger.info(f"Executable locations:")
     logger.info(f"  CLI: src/dist/convert_videos_cli{exe_extension}")
-    if gui_success:
-        logger.info(f"  GUI: src/dist/convert_videos_gui{exe_extension}")
+    logger.info(f"  DD: src/dist/duplicate_detector{exe_extension}")
+    logger.info(f"  GUI: src/dist/convert_videos_gui{exe_extension}")
     logger.info(
         f"Distribution package: src/dist/convert_videos-{target_platform}.{'zip' if target_platform == 'windows' else 'tar.gz'}")
 

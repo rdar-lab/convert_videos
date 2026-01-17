@@ -112,20 +112,7 @@ jobs:
       uses: actions/checkout@v4
     
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    
-    - name: Extract version tag
-      id: extract_version
-      run: |
-        if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "is_tag=true" >> $GITHUB_OUTPUT
-        else
-          echo "version=dev" >> $GITHUB_OUTPUT
-          echo "is_tag=false" >> $GITHUB_OUTPUT
-        fi
-    
+      uses: docker/setup-buildx-action@v3   
     - name: Build Docker image
       uses: docker/build-push-action@v5
       with:
@@ -133,4 +120,26 @@ jobs:
         push: false
         tags: |
           local/convert_videos:latest
+        platforms: linux/amd64
+
+  build-docker-duplicate-detector:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.duplicate-detector
+        push: false
+        tags: |
+          local/duplicate-detector:latest
         platforms: linux/amd64

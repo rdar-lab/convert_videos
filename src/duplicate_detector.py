@@ -8,6 +8,10 @@ import subprocess
 import tempfile
 import logging
 from pathlib import Path
+import sys
+import argparse
+import logging_utils
+import dependencies_utils
 
 import imagehash
 from PIL import Image
@@ -225,3 +229,88 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
     # GUI is responsible for cleanup
     
     return duplicate_groups
+
+def main():
+    """Main entry point for the script."""
+    parser = argparse.ArgumentParser(
+        description='Detect duplicate videos',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python duplicate_detector.py /path/to/videos
+        """
+    )
+    parser.add_argument('directory',
+                        help='Directory to scan duplicates on')
+    parser.add_argument('--distance',
+                        help='Max hamming distance (default 5)')
+    parser.add_argument('--auto-download-dependencies',
+                        action='store_true',
+                        help='Automatically download dependencies if not found (HandBrakeCLI, ffprobe)')
+    args = parser.parse_args()
+
+    # Print to stderr first for immediate visibility (before logging is setup)
+    print(f"starting... args: directory={args.directory}", file=sys.stderr)
+
+    logging_utils.setup_logging()
+
+    logger.info("=== Duplicate detector starting up ===")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Arguments: {vars(args)}")
+
+    target_directory = args.directory
+    distance = args.distance
+    if not distance:
+        distance = 5
+    else:
+        try:
+            distance = int(distance)
+        except ValueError:
+            logger.error("Invalid distance value provided. Must be an integer.")
+            sys.exit(1)
+
+    dependency_config = dependencies_utils.get_dependencies_path()
+
+    # Auto-download dependencies if requested
+    if args.auto_download_dependencies:
+        logger.info("Auto-downloading dependencies...")
+        deps_dir = Path(os.getcwd()) / "dependencies"
+
+        handbrake_path, ffprobe_path, ffmpeg_path = dependencies_utils.download_dependencies(
+            deps_dir)
+
+        if handbrake_path and ffprobe_path and ffmpeg_path:
+            # Update dependency config with downloaded paths
+            dependency_config['handbrake'] = handbrake_path
+            dependency_config['ffprobe'] = ffprobe_path
+            dependency_config['ffmpeg'] = ffmpeg_path
+            logger.info(
+                f"Dependencies downloaded: HandBrakeCLI={handbrake_path}, ffprobe={ffprobe_path}, ffmpeg_path={ffmpeg_path}")
+        else:
+            logger.error(
+                "Failed to download dependencies. Please install manually.")
+            sys.exit(1)
+
+    # Check dependencies
+    if not dependencies_utils.validate_dependencies(dependency_config):
+        sys.exit(1)
+
+    duplicated_groups = scan_for_duplicates(target_directory, distance, dependency_config['ffmpeg'], dependency_config['ffprobe'])
+    if not duplicated_groups:
+        logger.info("RESULT: no duplications found")
+        sys.exit(0)
+
+    logger.info(f"RESULT: found {len(duplicated_groups)} duplicate groups")
+    for group in duplicated_groups:
+        logger.info(f"Group Hash: {group.hash_value}, Hamming Distance: {group.hamming_distance}")
+        for file in group.files:
+            logger.info(f" - {file}")
+        if group.comparison_thumbnail:
+            logger.info(f" Comparison Thumbnail: {group.comparison_thumbnail}")
+    logger.info("=== Duplicate detector finished ===")
+
+if __name__ == '__main__':
+
+    main()
+    
+
