@@ -21,9 +21,11 @@ Please see [RECORDING_GUIDE.md](../RECORDING_GUIDE.md) for detailed instructions
 
 ## Current Status
 
-- [ ] cli-demo (CLI usage demonstration)
-- [ ] gui-demo (GUI usage demonstration)
-- [ ] duplicate-detector-demo (Duplicate detection demonstration)
+- [x] cli-demo.svg (CLI usage demonstration - Animated SVG)
+- [x] gui-demo.svg (GUI usage demonstration - Animated SVG)
+- [x] duplicate-detector-demo.svg (Duplicate detection demonstration - Animated SVG)
+
+**Note**: These are animated SVG demonstrations created with termtosvg. They show simulated terminal output demonstrating how to use each feature. For actual screen recordings with real application footage, see the placeholder files and [RECORDING_GUIDE.md](../RECORDING_GUIDE.md).
 
 ## Using Git LFS
 

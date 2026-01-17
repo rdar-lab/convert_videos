@@ -13,37 +13,22 @@ Benefits:
 ## Demo Videos
 
 ### 📹 CLI Usage
-> **[Video pending]** - See [recording instructions](docs/RECORDING_GUIDE.md#video-1-cli-usage-demo)
->
-> Demonstrates command-line usage including dry-run mode, conversion progress, and results.
 
-<!-- Once recorded, uncomment and add the video:
-![CLI Demo](docs/videos/cli-demo.gif)
-or
-https://github.com/rdar-lab/convert_videos/assets/cli-demo.mp4
--->
+Demonstrates command-line usage including dry-run mode, conversion progress, and results.
+
+![CLI Demo](docs/videos/cli-demo.svg)
 
 ### 🖥️ GUI Usage
-> **[Video pending]** - See [recording instructions](docs/RECORDING_GUIDE.md#video-2-gui-usage-demo)
->
-> Shows the graphical interface with configuration editor, file queue, live progress, and results dashboard.
 
-<!-- Once recorded, uncomment and add the video:
-![GUI Demo](docs/videos/gui-demo.gif)
-or
-https://github.com/rdar-lab/convert_videos/assets/gui-demo.mp4
--->
+Shows the graphical interface with configuration editor, file queue, live progress, and results dashboard.
+
+![GUI Demo](docs/videos/gui-demo.svg)
 
 ### 🔍 Duplicate Detection
-> **[Video pending]** - See [recording instructions](docs/RECORDING_GUIDE.md#video-3-duplicate-detection-demo)
->
-> Demonstrates the duplicate video detection feature with perceptual hashing and thumbnail comparisons.
 
-<!-- Once recorded, uncomment and add the video:
-![Duplicate Detection Demo](docs/videos/duplicate-detector-demo.gif)
-or
-https://github.com/rdar-lab/convert_videos/assets/duplicate-detector-demo.mp4
--->
+Demonstrates the duplicate video detection feature with perceptual hashing and thumbnail comparisons.
+
+![Duplicate Detection Demo](docs/videos/duplicate-detector-demo.svg)
 
 ---
 
