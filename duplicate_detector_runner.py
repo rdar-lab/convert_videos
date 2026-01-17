@@ -14,4 +14,4 @@ sys.path.insert(0, str(src_dir))
 from duplicate_detector import main
 
 if __name__ == "__main__":
-    duplicate_detector_module.main()
+    main()
