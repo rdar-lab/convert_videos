@@ -38,8 +38,8 @@ WORKDIR /usr/local/lib/convert_videos
 # Ensure Python can find the src package
 ENV PYTHONPATH=/usr/local/lib/convert_videos:$PYTHONPATH
 
-# Copy duplicate_detector.py 
-COPY duplicate_detector.py /usr/local/lib/convert_videos/duplicate_detector.py
+# Copy duplicate_detector_runner.py 
+COPY duplicate_detector_runner.py /usr/local/lib/convert_videos/duplicate_detector_runner.py
 
 # Copy entrypoint script to /usr/local/bin
 COPY entrypoint_duplicate_detector.sh /usr/local/bin/entrypoint_duplicate_detector.sh
