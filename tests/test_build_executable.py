@@ -305,10 +305,10 @@ class TestMain(unittest.TestCase):
         mock_download.assert_called_once()
         
         # Should create spec files (CLI and GUI)
-        self.assertEqual(mock_create_spec.call_count, 2)
+        self.assertEqual(mock_create_spec.call_count, 3)
         
         # Should build both versions
-        self.assertEqual(mock_build.call_count, 2)
+        self.assertEqual(mock_build.call_count, 3)
         
         # Should create distribution package
         mock_package.assert_called_once()
