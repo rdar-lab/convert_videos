@@ -155,7 +155,6 @@ Pre-built portable executables are available for Windows, Linux, and macOS from 
    - **Duplicate Detector (CLI):**
      - Linux/macOS: `./duplicate_detector [options]`
      - Windows: `duplicate_detector.exe [options]`
-  
 
 The GUI executable runs without a console window for a clean experience. The CLI executable always runs in background mode, supports all command-line options, and is suitable for scripts and automation.
 
