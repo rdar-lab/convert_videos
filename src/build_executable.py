@@ -106,9 +106,9 @@ binaries = []
                 ffprobe_path = repr(ffprobe_binary)
                 spec_content += f"binaries.append(({ffprobe_path}, '.'))\n"
 
-    # Use SPECPATH to ensure pathex points only to src/ directory
+    # Use absolute path to src for pathex
     spec_content += f"""
-# Get the absolute path to src directory (where this spec file is located)
+# Get the absolute path to src directory (where spec file is located)
 SPECPATH = os.path.dirname(os.path.abspath(SPEC))
 
 a = Analysis(
@@ -172,7 +172,7 @@ exe = EXE(
 def build_with_pyinstaller(spec_file):
     """Run PyInstaller with the spec file.
     
-    Runs from the repository root with explicit paths to avoid including root wrappers.
+    Runs from a temp directory to avoid parent directory being added to sys.path.
     """
     logger.info(f"Building executable with PyInstaller...")
     try:
@@ -189,25 +189,28 @@ def build_with_pyinstaller(spec_file):
         work_dir = repo_root / 'build'
         work_dir.mkdir(exist_ok=True)
 
-        # Run PyInstaller from the REPO ROOT (not src/)
-        # This prevents Python from auto-adding parent directories to sys.path
-        # The spec file itself configures pathex to only search src/
-        env = os.environ.copy()
-        # Set PYTHONPATH to ONLY src directory
-        env['PYTHONPATH'] = str(src_dir)
-        
-        subprocess.check_call(
-            [
-                sys.executable, '-m', 'PyInstaller',
-                str(spec_file),
-                '--clean',
-                '--noconfirm',
-                '--distpath', str(dist_dir),
-                '--workpath', str(work_dir)
-            ],
-            cwd=str(repo_root),
-            env=env
-        )
+        # Create a temporary directory OUTSIDE the repo to run PyInstaller from
+        # This prevents the repo root from being automatically added to sys.path
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Set environment with ONLY src in PYTHONPATH
+            env = os.environ.copy()
+            env['PYTHONPATH'] = str(src_dir)
+            
+            # Run PyInstaller from the temp directory
+            # This ensures the temp dir (not repo root) is added to sys.path
+            subprocess.check_call(
+                [
+                    sys.executable, '-m', 'PyInstaller',
+                    str(spec_file.resolve()),  # Use absolute path to spec file
+                    '--clean',
+                    '--noconfirm',
+                    '--distpath', str(dist_dir.resolve()),
+                    '--workpath', str(work_dir.resolve())
+                ],
+                cwd=temp_dir,
+                env=env
+            )
         logger.info("Build completed successfully!")
         return True
     except subprocess.CalledProcessError as e:
