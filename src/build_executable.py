@@ -191,7 +191,7 @@ def build_with_pyinstaller(spec_file):
 
         # Run PyInstaller from the REPO ROOT (not src/)
         # This prevents Python from auto-adding parent directories to sys.path
-        # We explicitly set --paths to ONLY the src directory
+        # The spec file itself configures pathex to only search src/
         env = os.environ.copy()
         # Set PYTHONPATH to ONLY src directory
         env['PYTHONPATH'] = str(src_dir)
@@ -203,8 +203,7 @@ def build_with_pyinstaller(spec_file):
                 '--clean',
                 '--noconfirm',
                 '--distpath', str(dist_dir),
-                '--workpath', str(work_dir),
-                '--paths', str(src_dir)
+                '--workpath', str(work_dir)
             ],
             cwd=str(repo_root),
             env=env
