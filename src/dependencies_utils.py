@@ -102,7 +102,7 @@ def find_dependency_path(dependency_name, config_path=None):
 
 def get_dependencies_path(dependencies_config = None):
     if dependencies_config is None:
-        dependencies_config {
+        dependencies_config = {
                 'handbrake': 'HandBrakeCLI',
                 'ffprobe': 'ffprobe',
                 'ffmpeg': 'ffmpeg'
