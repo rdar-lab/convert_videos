@@ -46,5 +46,7 @@ COPY entrypoint_duplicate_detector.sh /usr/local/bin/entrypoint_duplicate_detect
 
 RUN chmod +x /usr/local/bin/entrypoint_duplicate_detector.sh
 
-ENTRYPOINT ["/usr/local/bin/entrypoint_duplicate_detector.sh"]
+# Create /thumbs directory for thumbnail output
+RUN mkdir -p /thumbs
 
+ENTRYPOINT ["/usr/local/bin/entrypoint_duplicate_detector.sh"]

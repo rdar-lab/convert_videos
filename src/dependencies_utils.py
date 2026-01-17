@@ -100,7 +100,7 @@ def find_dependency_path(dependency_name, config_path=None):
     return result
 
 
-def get_dependencies_path(dependencies_config = None):
+def get_dependencies_path(dependencies_config=None):
     if dependencies_config is None:
         dependencies_config = {
                 'handbrake': 'HandBrakeCLI',
@@ -122,7 +122,6 @@ def get_dependencies_path(dependencies_config = None):
     )
 
     return dependencies_config
-    
 
 def validate_dependencies(dependency_paths=None):
     """Check if required dependencies are installed.
