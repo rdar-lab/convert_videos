@@ -10,6 +10,43 @@ Benefits:
 4. Configurable via YAML configuration file or command line arguments
 5. **Default GUI mode** for easy configuration and monitoring
 
+## Demo Videos
+
+### 📹 CLI Usage
+> **[Video pending]** - See [recording instructions](docs/RECORDING_GUIDE.md#video-1-cli-usage-demo)
+>
+> Demonstrates command-line usage including dry-run mode, conversion progress, and results.
+
+<!-- Once recorded, uncomment and add the video:
+![CLI Demo](docs/videos/cli-demo.gif)
+or
+https://github.com/rdar-lab/convert_videos/assets/cli-demo.mp4
+-->
+
+### 🖥️ GUI Usage
+> **[Video pending]** - See [recording instructions](docs/RECORDING_GUIDE.md#video-2-gui-usage-demo)
+>
+> Shows the graphical interface with configuration editor, file queue, live progress, and results dashboard.
+
+<!-- Once recorded, uncomment and add the video:
+![GUI Demo](docs/videos/gui-demo.gif)
+or
+https://github.com/rdar-lab/convert_videos/assets/gui-demo.mp4
+-->
+
+### 🔍 Duplicate Detection
+> **[Video pending]** - See [recording instructions](docs/RECORDING_GUIDE.md#video-3-duplicate-detection-demo)
+>
+> Demonstrates the duplicate video detection feature with perceptual hashing and thumbnail comparisons.
+
+<!-- Once recorded, uncomment and add the video:
+![Duplicate Detection Demo](docs/videos/duplicate-detector-demo.gif)
+or
+https://github.com/rdar-lab/convert_videos/assets/duplicate-detector-demo.mp4
+-->
+
+---
+
 ## Modes of Operation
 
 ### Headed Mode (GUI) - **DEFAULT**
