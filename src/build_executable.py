@@ -75,6 +75,7 @@ def create_spec_file(platform_name, binaries_data, script_name='convert_videos.p
         console: Whether to show console window (default: True for CLI, False for GUI)
     """
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+import os
 
 block_cipher = None
 
@@ -105,10 +106,14 @@ binaries = []
                 ffprobe_path = repr(ffprobe_binary)
                 spec_content += f"binaries.append(({ffprobe_path}, '.'))\n"
 
+    # Use SPECPATH to ensure pathex points only to src/ directory
     spec_content += f"""
+# Get the absolute path to src directory (where this spec file is located)
+SPECPATH = os.path.dirname(os.path.abspath(SPEC))
+
 a = Analysis(
     ['{script_name}'],
-    pathex=[],
+    pathex=[SPECPATH],
     binaries=binaries,
     datas=datas,
     hiddenimports=['yaml', 'tkinter', 'imagehash', 'PIL.Image', 'PIL.ImageTk'],
@@ -167,12 +172,12 @@ exe = EXE(
 def build_with_pyinstaller(spec_file):
     """Run PyInstaller with the spec file.
     
-    Runs from the src directory so all imports work naturally.
+    Runs from the repository root with explicit paths to avoid including root wrappers.
     """
     logger.info(f"Building executable with PyInstaller...")
     try:
         # Get the src directory (where this script is located)
-        src_dir = Path(__file__).parent
+        src_dir = Path(__file__).parent.resolve()
 
         # Repo root
         repo_root = src_dir.parent
@@ -184,12 +189,12 @@ def build_with_pyinstaller(spec_file):
         work_dir = repo_root / 'build'
         work_dir.mkdir(exist_ok=True)
 
-        # Run PyInstaller from the src directory
-        # Set PYTHONPATH to only include src/ to avoid picking up root wrappers
+        # Run PyInstaller from the REPO ROOT (not src/)
+        # This prevents Python from auto-adding parent directories to sys.path
+        # We explicitly set --paths to ONLY the src directory
         env = os.environ.copy()
-        # Prepend src_dir to existing PYTHONPATH if it exists
-        existing_path = env.get('PYTHONPATH', '')
-        env['PYTHONPATH'] = str(src_dir) + (os.pathsep + existing_path if existing_path else '')
+        # Set PYTHONPATH to ONLY src directory
+        env['PYTHONPATH'] = str(src_dir)
         
         subprocess.check_call(
             [
@@ -198,9 +203,10 @@ def build_with_pyinstaller(spec_file):
                 '--clean',
                 '--noconfirm',
                 '--distpath', str(dist_dir),
-                '--workpath', str(work_dir)
+                '--workpath', str(work_dir),
+                '--paths', str(src_dir)
             ],
-            cwd=str(src_dir),
+            cwd=str(repo_root),
             env=env
         )
         logger.info("Build completed successfully!")
