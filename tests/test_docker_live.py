@@ -19,6 +19,7 @@ import unittest
 from pathlib import Path
 import yaml
 import pytest
+import shutil
 
 
 # Mark all tests in this module as 'docker' to exclude from default test runs
@@ -70,7 +71,6 @@ class TestDockerLive(unittest.TestCase):
                 return False
             
             # Copy the static test video to the output path
-            import shutil
             shutil.copy2(static_video, output_path)
             
             if output_path.exists() and output_path.stat().st_size > 0:
@@ -532,7 +532,6 @@ class TestDockerLive(unittest.TestCase):
                 self.assertTrue(video_created1, "Failed to create first test video")
                 
                 # Create a duplicate by copying the same video
-                import shutil
                 shutil.copy2(test_video1, test_video2)
                 
                 self.assertTrue(test_video1.exists(), "Test video 1 does not exist")
