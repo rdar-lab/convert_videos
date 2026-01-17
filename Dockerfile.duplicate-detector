@@ -1,0 +1,52 @@
+FROM ubuntu:24.04
+
+ARG UBUNTU_MIRROR=http://archive.ubuntu.com/ubuntu
+RUN sed -i "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|g" /etc/apt/sources.list 
+RUN find /etc/apt/sources.list.d/ -type f -exec sed -i "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|g" {} \; 
+
+RUN apt-get update 
+RUN apt-get upgrade -y 
+RUN apt-get install -y software-properties-common ffmpeg procps python3 python3-pip
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt install -y curl
+
+#RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 8771ADB0816950D8 \
+#    || apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 8771ADB0816950D8
+
+
+#RUN echo "deb https://ppa.launchpadcontent.net/stebbins/handbrake-releases/ubuntu $(lsb_release -cs) main" \
+#    > /etc/apt/sources.list.d/handbrake-releases.list
+
+
+#RUN add-apt-repository -y ppa:stebbins/handbrake-releases
+
+#RUN apt-get update 
+
+RUN apt-get install -y handbrake-cli
+
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+
+# Copy source files to /usr/local/lib/convert_videos/src
+COPY src /usr/local/lib/convert_videos/src
+
+# Set working directory
+WORKDIR /usr/local/lib/convert_videos
+
+# Ensure Python can find the src package
+ENV PYTHONPATH=/usr/local/lib/convert_videos:$PYTHONPATH
+
+# Copy duplicate_detector.py 
+COPY duplicate_detector.py /usr/local/lib/convert_videos/duplicate_detector.py
+
+# Copy entrypoint script to /usr/local/bin
+COPY entrypoint_duplicate_detector.sh /usr/local/bin/entrypoint_duplicate_detector.sh
+
+RUN chmod +x /usr/local/bin/entrypoint_duplicate_detector.sh
+
+# Create /thumbs directory for thumbnail output
+RUN mkdir -p /thumbs
+
+ENTRYPOINT ["/usr/local/bin/entrypoint_duplicate_detector.sh"]

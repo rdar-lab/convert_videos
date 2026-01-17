@@ -150,18 +150,7 @@ def prepare_default_config():
 def post_process_configuration(config, args):
     # Resolve dependency paths after loading configuration
     # This checks for bundled executables in PyInstaller bundles and resolves paths
-    config['dependencies']['handbrake'] = dependencies_utils.find_dependency_path(
-        'HandBrakeCLI',
-        config['dependencies'].get('handbrake')
-    )
-    config['dependencies']['ffprobe'] = dependencies_utils.find_dependency_path(
-        'ffprobe',
-        config['dependencies'].get('ffprobe')
-    )
-    config['dependencies']['ffmpeg'] = dependencies_utils.find_dependency_path(
-        'ffmpeg',
-        config['dependencies'].get('ffmpeg')
-    )
+    config['dependencies'] = dependencies_utils.get_dependencies_path(config.get('dependencies'))
 
     # Reconfigure logging if config file specifies a different path
     # Priority: CLI arg > env var > config file > default

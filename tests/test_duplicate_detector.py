@@ -3,6 +3,7 @@
 Unit tests for duplicate_detector.py
 """
 
+import sys
 import unittest
 import tempfile
 import os
@@ -10,7 +11,7 @@ from unittest.mock import patch, MagicMock
 
 from duplicate_detector import (
     DuplicateResult, hamming_distance, create_comparison_thumbnail,
-    scan_for_duplicates, MAX_HAMMING_DISTANCE_ERROR
+    scan_for_duplicates, MAX_HAMMING_DISTANCE_ERROR, main
 )
 from PIL import Image
 
@@ -259,6 +260,183 @@ class TestScanForDuplicates(unittest.TestCase):
             except Exception as e:
                 # Expected - no videos could be processed
                 self.assertIn('No videos could be processed', str(e))
+
+
+class TestDuplicateDetectorCLI(unittest.TestCase):
+    """Test CLI functionality."""
+    
+    @patch('duplicate_detector.scan_for_duplicates')
+    @patch('duplicate_detector.dependencies_utils.validate_dependencies')
+    @patch('duplicate_detector.dependencies_utils.get_dependencies_path')
+    @patch('duplicate_detector.logging_utils.setup_logging')
+    def test_main_basic_execution(self, mock_logging, mock_get_deps, mock_validate, mock_scan):
+        """Test basic CLI execution."""
+        # Mock dependencies
+        mock_get_deps.return_value = {
+            'handbrake': '/usr/bin/HandBrakeCLI',
+            'ffprobe': '/usr/bin/ffprobe',
+            'ffmpeg': '/usr/bin/ffmpeg'
+        }
+        mock_validate.return_value = True
+        mock_scan.return_value = []  # No duplicates found
+        
+        # Mock command line args
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = ['duplicate_detector.py', tmpdir]
+            with patch.object(sys, 'argv', test_args):
+                # Should exit with 0 when no duplicates found
+                with self.assertRaises(SystemExit) as cm:
+                    main()
+                self.assertEqual(cm.exception.code, 0)
+        
+        # Verify logging was set up
+        mock_logging.assert_called_once()
+        
+        # Verify dependencies were validated
+        mock_validate.assert_called_once()
+        
+        # Verify scan was called
+        mock_scan.assert_called_once()
+    
+    @patch('duplicate_detector.scan_for_duplicates')
+    @patch('duplicate_detector.dependencies_utils.validate_dependencies')
+    @patch('duplicate_detector.dependencies_utils.get_dependencies_path')
+    @patch('duplicate_detector.logging_utils.setup_logging')
+    def test_main_with_duplicates_found(self, mock_logging, mock_get_deps, mock_validate, mock_scan):
+        """Test CLI with duplicates found."""
+        # Mock dependencies
+        mock_get_deps.return_value = {
+            'handbrake': '/usr/bin/HandBrakeCLI',
+            'ffprobe': '/usr/bin/ffprobe',
+            'ffmpeg': '/usr/bin/ffmpeg'
+        }
+        mock_validate.return_value = True
+        
+        # Mock duplicates found
+        duplicate_result = DuplicateResult(
+            hash_value='abc123',
+            files=['/tmp/video1.mp4', '/tmp/video2.mp4'],
+            hamming_distance=3
+        )
+        mock_scan.return_value = [duplicate_result]
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = ['duplicate_detector.py', tmpdir]
+            with patch.object(sys, 'argv', test_args):
+                # Should NOT raise SystemExit when duplicates found
+                main()
+        
+        # Verify scan was called with default distance=5
+        mock_scan.assert_called_once()
+        call_args = mock_scan.call_args
+        self.assertEqual(call_args[0][1], 5)  # distance parameter
+    
+    @patch('duplicate_detector.scan_for_duplicates')
+    @patch('duplicate_detector.dependencies_utils.validate_dependencies')
+    @patch('duplicate_detector.dependencies_utils.get_dependencies_path')
+    @patch('duplicate_detector.logging_utils.setup_logging')
+    def test_main_with_custom_distance(self, mock_logging, mock_get_deps, mock_validate, mock_scan):
+        """Test CLI with custom distance parameter."""
+        # Mock dependencies
+        mock_get_deps.return_value = {
+            'handbrake': '/usr/bin/HandBrakeCLI',
+            'ffprobe': '/usr/bin/ffprobe',
+            'ffmpeg': '/usr/bin/ffmpeg'
+        }
+        mock_validate.return_value = True
+        mock_scan.return_value = []
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = ['duplicate_detector.py', tmpdir, '--distance', '10']
+            with patch.object(sys, 'argv', test_args):
+                with self.assertRaises(SystemExit) as cm:
+                    main()
+                self.assertEqual(cm.exception.code, 0)
+        
+        # Verify scan was called with custom distance=10
+        mock_scan.assert_called_once()
+        call_args = mock_scan.call_args
+        self.assertEqual(call_args[0][1], 10)  # distance parameter
+    
+    @patch('duplicate_detector.dependencies_utils.download_dependencies')
+    @patch('duplicate_detector.scan_for_duplicates')
+    @patch('duplicate_detector.dependencies_utils.validate_dependencies')
+    @patch('duplicate_detector.dependencies_utils.get_dependencies_path')
+    @patch('duplicate_detector.logging_utils.setup_logging')
+    def test_main_with_auto_download(self, mock_logging, mock_get_deps, mock_validate, 
+                                      mock_scan, mock_download):
+        """Test CLI with auto-download dependencies."""
+        # Mock dependencies
+        mock_get_deps.return_value = {
+            'handbrake': '/usr/bin/HandBrakeCLI',
+            'ffprobe': '/usr/bin/ffprobe',
+            'ffmpeg': '/usr/bin/ffmpeg'
+        }
+        mock_validate.return_value = True
+        mock_scan.return_value = []
+        
+        # Mock successful download
+        mock_download.return_value = (
+            '/deps/HandBrakeCLI',
+            '/deps/ffprobe',
+            '/deps/ffmpeg'
+        )
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = ['duplicate_detector.py', tmpdir, '--auto-download-dependencies']
+            with patch.object(sys, 'argv', test_args):
+                with self.assertRaises(SystemExit) as cm:
+                    main()
+                self.assertEqual(cm.exception.code, 0)
+        
+        # Verify download was called
+        mock_download.assert_called_once()
+    
+    @patch('duplicate_detector.dependencies_utils.download_dependencies')
+    @patch('duplicate_detector.dependencies_utils.validate_dependencies')
+    @patch('duplicate_detector.dependencies_utils.get_dependencies_path')
+    @patch('duplicate_detector.logging_utils.setup_logging')
+    def test_main_auto_download_failure(self, mock_logging, mock_get_deps, mock_validate, mock_download):
+        """Test CLI with failed auto-download."""
+        # Mock dependencies
+        mock_get_deps.return_value = {
+            'handbrake': '/usr/bin/HandBrakeCLI',
+            'ffprobe': '/usr/bin/ffprobe',
+            'ffmpeg': '/usr/bin/ffmpeg'
+        }
+        mock_validate.return_value = True
+        
+        # Mock failed download
+        mock_download.return_value = (None, None, None)
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = ['duplicate_detector.py', tmpdir, '--auto-download-dependencies']
+            with patch.object(sys, 'argv', test_args):
+                # Should exit with error code 1 when download fails
+                with self.assertRaises(SystemExit) as cm:
+                    main()
+                self.assertEqual(cm.exception.code, 1)
+    
+    @patch('duplicate_detector.dependencies_utils.validate_dependencies')
+    @patch('duplicate_detector.dependencies_utils.get_dependencies_path')
+    @patch('duplicate_detector.logging_utils.setup_logging')
+    def test_main_validation_failure(self, mock_logging, mock_get_deps, mock_validate):
+        """Test CLI with dependency validation failure."""
+        # Mock dependencies
+        mock_get_deps.return_value = {
+            'handbrake': '/usr/bin/HandBrakeCLI',
+            'ffprobe': '/usr/bin/ffprobe',
+            'ffmpeg': '/usr/bin/ffmpeg'
+        }
+        mock_validate.return_value = False  # Validation fails
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = ['duplicate_detector.py', tmpdir]
+            with patch.object(sys, 'argv', test_args):
+                # Should exit with error code 1 when validation fails
+                with self.assertRaises(SystemExit) as cm:
+                    main()
+                self.assertEqual(cm.exception.code, 1)
 
 
 if __name__ == '__main__':

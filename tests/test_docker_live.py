@@ -19,6 +19,8 @@ import unittest
 from pathlib import Path
 import yaml
 import pytest
+import shutil
+from PIL import Image
 
 
 # Mark all tests in this module as 'docker' to exclude from default test runs
@@ -70,7 +72,6 @@ class TestDockerLive(unittest.TestCase):
                 return False
             
             # Copy the static test video to the output path
-            import shutil
             shutil.copy2(static_video, output_path)
             
             if output_path.exists() and output_path.stat().st_size > 0:
@@ -452,6 +453,218 @@ class TestDockerLive(unittest.TestCase):
                 print("="*60)
                 
                 self._stop_and_remove_container(container_name)
+                if cleanup_needed:
+                    self._remove_docker_image(image_tag)
+                
+                print("\n✓ Cleanup complete")
+                
+                # Re-raise skip exception if we caught one
+                if skip_exception:
+                    raise skip_exception
+    
+    def test_docker_duplicate_detector_live(self):
+        """
+        Test the duplicate detector Docker workflow:
+        1. Build duplicate detector Docker image
+        2. Create test videos (including a duplicate)
+        3. Run container
+        4. Verify duplicate detection
+        5. Clean up
+        """
+        # Setup
+        repo_path = Path(__file__).parent.parent.absolute()  # Go up to repo root
+        image_tag = 'duplicate_detector_test:latest'
+        container_name = 'duplicate_detector_test_container'
+        
+        # Create temporary directory for test
+        with tempfile.TemporaryDirectory(prefix='dd_docker_test_') as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            print(f"\nTest directory: {tmpdir_path}")
+            
+            cleanup_needed = False
+            skip_exception = None
+            
+            try:
+                # Step 1: Build Docker image
+                print("\n" + "="*60)
+                print("STEP 1: Building Duplicate Detector Docker image")
+                print("="*60)
+                
+                try:
+                    # Build using Dockerfile.duplicate-detector
+                    print(f"\nBuilding Docker image: {image_tag}")
+                    result = subprocess.run(
+                        ['docker', 'build', '-f', 'Dockerfile.duplicate-detector', '-t', image_tag, '.'],
+                        cwd=str(repo_path),
+                        capture_output=True,
+                        text=True,
+                        timeout=600  # 10 minutes timeout for build
+                    )
+                    
+                    if result.returncode == 0:
+                        print(f"✓ Docker image built successfully: {image_tag}")
+                        cleanup_needed = True  # Image was built, need cleanup
+                    else:
+                        print(f"✗ Docker build failed:")
+                        print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+                        print(result.stderr[-500:] if len(result.stderr) > 500 else result.stderr)
+                        
+                        # Check if it's an SSL/network issue
+                        error_output = result.stdout + result.stderr
+                        if 'SSL' in error_output or 'certificate' in error_output.lower():
+                            print("\n⚠ Build failed due to SSL/certificate issues.")
+                            print("This may be an environment issue, not a code issue.")
+                            raise unittest.SkipTest("Docker build failed due to SSL/network issues in environment")
+                        
+                        self.fail("Docker image build failed")
+                except unittest.SkipTest as e:
+                    skip_exception = e
+                    raise
+                
+                # Step 2: Create test videos (including duplicate)
+                print("\n" + "="*60)
+                print("STEP 2: Creating test videos")
+                print("="*60)
+                
+                test_video1 = tmpdir_path / 'video1.mp4'
+                test_video2 = tmpdir_path / 'video2.mp4'  # This will be a duplicate
+                
+                video_created1 = self._create_minimal_test_video(test_video1)
+                self.assertTrue(video_created1, "Failed to create first test video")
+                
+                # Create a duplicate by copying the same video
+                shutil.copy2(test_video1, test_video2)
+                
+                self.assertTrue(test_video1.exists(), "Test video 1 does not exist")
+                self.assertTrue(test_video2.exists(), "Test video 2 does not exist")
+                
+                print(f"✓ Created duplicate videos:")
+                print(f"  - {test_video1.name}: {test_video1.stat().st_size} bytes")
+                print(f"  - {test_video2.name}: {test_video2.stat().st_size} bytes")
+                
+                # Step 3: Run Docker container
+                print("\n" + "="*60)
+                print("STEP 3: Running Duplicate Detector Docker container")
+                print("="*60)
+                
+                # Create a directory for thumbnails
+                thumbs_dir = tmpdir_path / 'thumbs'
+                thumbs_dir.mkdir(exist_ok=True)
+                print(f"Created thumbnails directory: {thumbs_dir}")
+                
+                # Run container and capture output
+                cmd = [
+                    'docker', 'run',
+                    '--rm',  # Remove container after execution
+                    '--name', container_name,
+                    '-v', f'{tmpdir_path}:/data',
+                    '-v', f'{thumbs_dir}:/thumbs',  # Mount thumbs directory
+                    image_tag,
+                    '/data'  # Directory to scan
+                ]
+                
+                print(f"Running command: {' '.join(cmd)}")
+                
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                
+                print(f"\nContainer exit code: {result.returncode}")
+                print("\nContainer output:")
+                print(result.stdout)
+                if result.stderr:
+                    print("\nContainer stderr:")
+                    print(result.stderr)
+                
+                # Step 4: Verify results
+                print("\n" + "="*60)
+                print("STEP 4: Verifying results")
+                print("="*60)
+                
+                # Check that duplicates were found in the output
+                output = result.stdout + result.stderr
+                
+                # Verify exit code (should be 0 for success)
+                self.assertEqual(result.returncode, 0, 
+                               f"Container exited with unexpected code: {result.returncode}")
+                
+                # Verify that duplicate groups were found
+                self.assertIn('found 1 duplicate group', output.lower(), 
+                             "Expected to find exactly 1 duplicate group")
+                print("✓ Found 1 duplicate group as expected")
+                
+                # Verify that both video files are mentioned in the output
+                self.assertIn('video1.mp4', output, 
+                             "Expected video1.mp4 to be in duplicate group")
+                self.assertIn('video2.mp4', output, 
+                             "Expected video2.mp4 to be in duplicate group")
+                print(f"✓ Both videos (video1.mp4 and video2.mp4) found in duplicate group")
+                
+                # Verify that a comparison thumbnail was generated and is mentioned
+                self.assertIn('Comparison Thumbnail:', output, 
+                             "Expected comparison thumbnail to be generated")
+                print("✓ Comparison thumbnail was generated")
+                
+                # Extract and validate thumbnail path from output
+                thumbnail_line = next((line for line in output.split('\n') if 'Comparison Thumbnail:' in line), None)
+                self.assertIsNotNone(thumbnail_line, 
+                                   "Expected at least one comparison thumbnail line in output")
+                
+                # Extract path from line like "Comparison Thumbnail: /thumbs/comparison_abc123.jpg"
+                parts = thumbnail_line.split('Comparison Thumbnail:', maxsplit=1)
+                self.assertEqual(len(parts), 2, 
+                               "Expected 'Comparison Thumbnail:' to be in the line")
+                thumbnail_path_str = parts[1].strip()
+                
+                # Validate the thumbnail path is not empty and looks like a valid file path
+                self.assertTrue(len(thumbnail_path_str) > 0, 
+                              "Comparison thumbnail path is empty")
+                self.assertTrue(thumbnail_path_str.endswith('.jpg'), 
+                              f"Comparison thumbnail path should end with .jpg: {thumbnail_path_str}")
+                self.assertIn('/thumbs/', thumbnail_path_str, 
+                            f"Comparison thumbnail path should be in /thumbs/: {thumbnail_path_str}")
+                
+                print(f"✓ Comparison thumbnail path in output: {thumbnail_path_str}")
+                
+                # Verify the thumbnail file actually exists in the mounted thumbs directory
+                thumbnail_files = list(thumbs_dir.glob('comparison_*.jpg'))
+                self.assertGreater(len(thumbnail_files), 0, 
+                                 "Expected at least one comparison thumbnail file in thumbs directory")
+                
+                print(f"✓ Found {len(thumbnail_files)} thumbnail file(s) in {thumbs_dir}")
+                for thumb_file in thumbnail_files:
+                    self.assertTrue(thumb_file.exists(), 
+                                  f"Thumbnail file {thumb_file} does not exist")
+                    self.assertGreater(thumb_file.stat().st_size, 0, 
+                                     f"Thumbnail file {thumb_file} is empty")
+                    print(f"  - {thumb_file.name}: {thumb_file.stat().st_size} bytes")
+                    
+                    # Verify it's a valid JPEG image
+                    try:
+                        img = Image.open(thumb_file)
+                        img.verify()
+                        print(f"    ✓ Valid JPEG image: {img.format}, {img.size}")
+                    except Exception as e:
+                        self.fail(f"Thumbnail file {thumb_file} is not a valid image: {e}")
+                
+                print("✓ All thumbnail files validated successfully")
+                
+                print("\n" + "="*60)
+                print("✓ DUPLICATE DETECTOR DOCKER TEST PASSED")
+                print("="*60)
+                
+            finally:
+                # Step 5: Clean up
+                print("\n" + "="*60)
+                print("STEP 5: Cleaning up")
+                print("="*60)
+                
+                # Container is already removed due to --rm flag
+                print(f"✓ Container auto-removed (--rm flag)")
+                
                 if cleanup_needed:
                     self._remove_docker_image(image_tag)
                 

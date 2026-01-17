@@ -7,7 +7,12 @@ import os
 import subprocess
 import tempfile
 import logging
+import uuid
 from pathlib import Path
+import sys
+import argparse
+import logging_utils
+import dependencies_utils
 
 import imagehash
 from PIL import Image
@@ -47,11 +52,12 @@ def hamming_distance(hash1, hash2):
         return MAX_HAMMING_DISTANCE_ERROR  # Return large distance on error
 
 
-def create_comparison_thumbnail(thumbnail_paths):
+def create_comparison_thumbnail(thumbnail_paths, output_dir=None):
     """Create a side-by-side comparison thumbnail from two images.
     
     Args:
         thumbnail_paths: List of at least 2 image file paths
+        output_dir: Optional directory to save the thumbnail. If None, uses system temp directory.
         
     Returns:
         str: Path to combined thumbnail, or None on error
@@ -73,17 +79,24 @@ def create_comparison_thumbnail(thumbnail_paths):
         combined.paste(img1, (0, 0))
         combined.paste(img2, (img1.width, 0))
         
-        # Save to temp file
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_combined:
-            combined.save(temp_combined, format='JPEG')
-            return temp_combined.name
+        # Save to specified directory or temp file
+        if output_dir:
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir / f"comparison_{uuid.uuid4().hex[:12]}.jpg"
+            combined.save(output_path, format='JPEG')
+            return str(output_path)
+        else:
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_combined:
+                combined.save(temp_combined, format='JPEG')
+                return temp_combined.name
     
     except Exception as e:
         logger.error(f"Error creating comparison thumbnail: {repr(e)}")
         return None
 
 
-def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, progress_callback=None):
+def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, progress_callback=None, thumbnails_dir=None):
     """Scan directory for duplicate videos.
     
     Args:
@@ -92,6 +105,7 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
         ffmpeg_path: Path to ffmpeg executable
         ffprobe_path: Path to ffprobe executable
         progress_callback: Optional callback function for progress updates
+        thumbnails_dir: Optional directory to save comparison thumbnails. If None, uses system temp directory.
         
     Returns:
         list: List of DuplicateResult objects representing duplicate groups
@@ -208,7 +222,7 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
             comparison_thumbnail = None
             try:
                 if len(group_thumbs) >= 2:
-                    comparison_thumbnail = create_comparison_thumbnail(group_thumbs[:2])
+                    comparison_thumbnail = create_comparison_thumbnail(group_thumbs[:2], output_dir=thumbnails_dir)
             except Exception as e:
                 logger.error(f"Failed to create comparison thumbnail: {repr(e)}")
             
@@ -225,3 +239,86 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
     # GUI is responsible for cleanup
     
     return duplicate_groups
+
+def main():
+    """Main entry point for the script."""
+    parser = argparse.ArgumentParser(
+        description='Detect duplicate videos',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python duplicate_detector.py /path/to/videos
+        """
+    )
+    parser.add_argument('directory',
+                        help='Directory to scan for duplicates')
+    parser.add_argument('--distance',
+                        type=int,
+                        help='Max hamming distance (default 5)')
+    parser.add_argument('--thumbnails-dir',
+                        help='Directory to save comparison thumbnails (default: system temp directory)')
+    parser.add_argument('--auto-download-dependencies',
+                        action='store_true',
+                        help='Automatically download dependencies if not found (HandBrakeCLI, ffprobe, ffmpeg)')
+    args = parser.parse_args()
+
+    # Print to stderr first for immediate visibility (before logging is setup)
+    print(f"starting... args: directory={args.directory}", file=sys.stderr)
+
+    logging_utils.setup_logging()
+
+    logger.info("=== Duplicate detector starting up ===")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Arguments: {vars(args)}")
+
+    target_directory = args.directory
+    distance = args.distance if args.distance is not None else 5
+
+    dependency_config = dependencies_utils.get_dependencies_path()
+
+    # Auto-download dependencies if requested
+    if args.auto_download_dependencies:
+        logger.info("Auto-downloading dependencies...")
+        deps_dir = Path(os.getcwd()) / "dependencies"
+
+        handbrake_path, ffprobe_path, ffmpeg_path = dependencies_utils.download_dependencies(
+            deps_dir)
+
+        if handbrake_path and ffprobe_path and ffmpeg_path:
+            # Update dependency config with downloaded paths
+            dependency_config['handbrake'] = handbrake_path
+            dependency_config['ffprobe'] = ffprobe_path
+            dependency_config['ffmpeg'] = ffmpeg_path
+            logger.info(
+                f"Dependencies downloaded: HandBrakeCLI={handbrake_path}, ffprobe={ffprobe_path}, ffmpeg_path={ffmpeg_path}")
+        else:
+            logger.error(
+                "Failed to download dependencies. Please install manually.")
+            sys.exit(1)
+
+    # Check dependencies
+    if not dependencies_utils.validate_dependencies(dependency_config):
+        sys.exit(1)
+
+    # Get thumbnails directory
+    thumbnails_dir = args.thumbnails_dir
+    if thumbnails_dir:
+        logger.info(f"Using thumbnails directory: {thumbnails_dir}")
+
+    duplicated_groups = scan_for_duplicates(target_directory, distance, dependency_config['ffmpeg'], dependency_config['ffprobe'], thumbnails_dir=thumbnails_dir)
+    if not duplicated_groups:
+        logger.info("RESULT: no duplications found")
+        sys.exit(0)
+
+    logger.info(f"RESULT: found {len(duplicated_groups)} duplicate groups")
+    for group in duplicated_groups:
+        logger.info(f"Group Hash: {group.hash_value}, Hamming Distance: {group.hamming_distance}")
+        for file in group.files:
+            logger.info(f" - {file}")
+        if group.comparison_thumbnail:
+            logger.info(f" Comparison Thumbnail: {group.comparison_thumbnail}")
+    logger.info("=== Duplicate detector finished ===")
+
+if __name__ == '__main__':
+    main()
+

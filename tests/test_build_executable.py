@@ -271,11 +271,11 @@ class TestCreateDistributionPackage(unittest.TestCase):
     def test_create_distribution_package_no_cli_exe(self, mock_exists):
         """Test error when CLI executable is missing."""
         mock_exists.return_value = False
-        
-        result = build_executable.create_distribution_package('linux')
-        
-        # Should return None when CLI exe is missing
-        self.assertIsNone(result)
+
+        with self.assertRaises(SystemExit) as cm:        
+            result = build_executable.create_distribution_package('linux')
+
+        self.assertEqual(cm.exception.code, 1)
 
 
 class TestMain(unittest.TestCase):
@@ -305,49 +305,45 @@ class TestMain(unittest.TestCase):
         mock_download.assert_called_once()
         
         # Should create spec files (CLI and GUI)
-        self.assertEqual(mock_create_spec.call_count, 2)
+        self.assertEqual(mock_create_spec.call_count, 3)
         
         # Should build both versions
-        self.assertEqual(mock_build.call_count, 2)
+        self.assertEqual(mock_build.call_count, 3)
         
         # Should create distribution package
         mock_package.assert_called_once()
     
-    @patch('build_executable.sys.exit')
     @patch('build_executable.dependencies_utils.download_dependencies')
     @patch('build_executable.Path.mkdir')
     @patch('build_executable.install_pyinstaller')
     @patch('build_executable.get_platform')
     @patch('sys.argv', ['build_executable.py'])
     def test_main_no_handbrake(self, mock_get_platform, mock_install, mock_mkdir,
-                               mock_download, mock_exit):
+                               mock_download):
         """Test failure when HandBrake is not available."""
         mock_get_platform.return_value = 'linux'
         mock_download.return_value = (None, '/ffprobe', '/ffmpeg')
         
-        build_executable.main()
-        
-        # Should exit with error (may be called multiple times in complex flow)
-        mock_exit.assert_called_with(1)
+        with self.assertRaises(SystemExit) as cm:
+            build_executable.main()
+        self.assertEqual(cm.exception.code, 1)
     
-    @patch('build_executable.sys.exit')
     @patch('build_executable.dependencies_utils.download_dependencies')
     @patch('build_executable.Path.mkdir')
     @patch('build_executable.install_pyinstaller')
     @patch('build_executable.get_platform')
     @patch('sys.argv', ['build_executable.py'])
     def test_main_no_ffmpeg(self, mock_get_platform, mock_install, mock_mkdir,
-                           mock_download, mock_exit):
+                           mock_download):
         """Test failure when ffmpeg is not available."""
         mock_get_platform.return_value = 'linux'
         mock_download.return_value = ('/handbrake', None, None)
         
-        build_executable.main()
+        with self.assertRaises(SystemExit) as cm:
+            build_executable.main()
+        self.assertEqual(cm.exception.code, 1)
         
-        # Should exit with error (may be called multiple times in complex flow)
-        mock_exit.assert_called_with(1)
     
-    @patch('build_executable.sys.exit')
     @patch('build_executable.build_with_pyinstaller')
     @patch('build_executable.create_spec_file')
     @patch('build_executable.dependencies_utils.download_dependencies')
@@ -356,16 +352,15 @@ class TestMain(unittest.TestCase):
     @patch('build_executable.get_platform')
     @patch('sys.argv', ['build_executable.py'])
     def test_main_cli_build_failure(self, mock_get_platform, mock_install, mock_mkdir,
-                                    mock_download, mock_create_spec, mock_build, mock_exit):
+                                    mock_download, mock_create_spec, mock_build):
         """Test failure when CLI build fails."""
         mock_get_platform.return_value = 'linux'
         mock_download.return_value = ('/handbrake', '/ffprobe', '/ffmpeg')
         mock_build.return_value = False  # Build fails
         
-        build_executable.main()
-        
-        # Should exit with error
-        mock_exit.assert_called_with(1)
+        with self.assertRaises(SystemExit) as cm:
+            build_executable.main()
+        self.assertEqual(cm.exception.code, 1)
     
     @patch('build_executable.create_distribution_package')
     @patch('build_executable.build_with_pyinstaller')

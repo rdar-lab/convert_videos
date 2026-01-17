@@ -159,6 +159,62 @@ jobs:
           ${{ secrets.DOCKERHUB_USERNAME }}/convert_videos:latest
         platforms: linux/amd64
 
+
+  build-docker-duplicate-detector:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Check if DockerHub secrets are set
+      id: check_secrets
+      run: |
+        if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+          echo "secrets_exist=true" >> $GITHUB_OUTPUT
+        else
+          echo "secrets_exist=false" >> $GITHUB_OUTPUT
+          echo "⚠️ DOCKERHUB_USERNAME or DOCKERHUB_TOKEN secrets not set. Skipping Docker build."
+        fi
+    
+    - name: Set up Docker Buildx
+      if: steps.check_secrets.outputs.secrets_exist == 'true'
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Docker Hub
+      if: steps.check_secrets.outputs.secrets_exist == 'true'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    - name: Extract version tag
+      if: steps.check_secrets.outputs.secrets_exist == 'true'
+      id: extract_version
+      run: |
+        if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "is_tag=true" >> $GITHUB_OUTPUT
+        else
+          echo "version=dev" >> $GITHUB_OUTPUT
+          echo "is_tag=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Build and push Docker image
+      if: steps.check_secrets.outputs.secrets_exist == 'true' && steps.extract_version.outputs.is_tag == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.duplicate-detector
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/duplicate-detector:${{ steps.extract_version.outputs.version }}
+          ${{ secrets.DOCKERHUB_USERNAME }}/duplicate-detector:latest
+        platforms: linux/amd64
+
   create-release:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
