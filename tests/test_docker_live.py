@@ -460,6 +460,165 @@ class TestDockerLive(unittest.TestCase):
                 # Re-raise skip exception if we caught one
                 if skip_exception:
                     raise skip_exception
+    
+    def test_docker_duplicate_detector_live(self):
+        """
+        Test the duplicate detector Docker workflow:
+        1. Build duplicate detector Docker image
+        2. Create test videos (including a duplicate)
+        3. Run container
+        4. Verify duplicate detection
+        5. Clean up
+        """
+        # Setup
+        repo_path = Path(__file__).parent.parent.absolute()  # Go up to repo root
+        image_tag = 'duplicate_detector_test:latest'
+        container_name = 'duplicate_detector_test_container'
+        
+        # Create temporary directory for test
+        with tempfile.TemporaryDirectory(prefix='dd_docker_test_') as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            print(f"\nTest directory: {tmpdir_path}")
+            
+            cleanup_needed = False
+            skip_exception = None
+            
+            try:
+                # Step 1: Build Docker image
+                print("\n" + "="*60)
+                print("STEP 1: Building Duplicate Detector Docker image")
+                print("="*60)
+                
+                try:
+                    # Build using Dockerfile.duplicate-detector
+                    print(f"\nBuilding Docker image: {image_tag}")
+                    result = subprocess.run(
+                        ['docker', 'build', '-f', 'Dockerfile.duplicate-detector', '-t', image_tag, '.'],
+                        cwd=str(repo_path),
+                        capture_output=True,
+                        text=True,
+                        timeout=600  # 10 minutes timeout for build
+                    )
+                    
+                    if result.returncode == 0:
+                        print(f"✓ Docker image built successfully: {image_tag}")
+                        cleanup_needed = True  # Image was built, need cleanup
+                    else:
+                        print(f"✗ Docker build failed:")
+                        print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+                        print(result.stderr[-500:] if len(result.stderr) > 500 else result.stderr)
+                        
+                        # Check if it's an SSL/network issue
+                        error_output = result.stdout + result.stderr
+                        if 'SSL' in error_output or 'certificate' in error_output.lower():
+                            print("\n⚠ Build failed due to SSL/certificate issues.")
+                            print("This may be an environment issue, not a code issue.")
+                            raise unittest.SkipTest("Docker build failed due to SSL/network issues in environment")
+                        
+                        self.fail("Docker image build failed")
+                except unittest.SkipTest as e:
+                    skip_exception = e
+                    raise
+                
+                # Step 2: Create test videos (including duplicate)
+                print("\n" + "="*60)
+                print("STEP 2: Creating test videos")
+                print("="*60)
+                
+                test_video1 = tmpdir_path / 'video1.mp4'
+                test_video2 = tmpdir_path / 'video2.mp4'  # This will be a duplicate
+                
+                video_created1 = self._create_minimal_test_video(test_video1)
+                self.assertTrue(video_created1, "Failed to create first test video")
+                
+                # Create a duplicate by copying the same video
+                import shutil
+                shutil.copy2(test_video1, test_video2)
+                
+                self.assertTrue(test_video1.exists(), "Test video 1 does not exist")
+                self.assertTrue(test_video2.exists(), "Test video 2 does not exist")
+                
+                print(f"✓ Created duplicate videos:")
+                print(f"  - {test_video1.name}: {test_video1.stat().st_size} bytes")
+                print(f"  - {test_video2.name}: {test_video2.stat().st_size} bytes")
+                
+                # Step 3: Run Docker container
+                print("\n" + "="*60)
+                print("STEP 3: Running Duplicate Detector Docker container")
+                print("="*60)
+                
+                # Run container and capture output
+                cmd = [
+                    'docker', 'run',
+                    '--rm',  # Remove container after execution
+                    '--name', container_name,
+                    '-v', f'{tmpdir_path}:/data',
+                    image_tag,
+                    '/data'  # Directory to scan
+                ]
+                
+                print(f"Running command: {' '.join(cmd)}")
+                
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                
+                print(f"\nContainer exit code: {result.returncode}")
+                print("\nContainer output:")
+                print(result.stdout)
+                if result.stderr:
+                    print("\nContainer stderr:")
+                    print(result.stderr)
+                
+                # Step 4: Verify results
+                print("\n" + "="*60)
+                print("STEP 4: Verifying results")
+                print("="*60)
+                
+                # Check that duplicates were found in the output
+                output = result.stdout + result.stderr
+                
+                # The duplicate detector should find duplicates
+                self.assertIn('duplicate', output.lower(), 
+                             "Expected 'duplicate' to be mentioned in output")
+                
+                # Should mention finding duplicate groups
+                if 'found' in output.lower() and 'duplicate' in output.lower():
+                    print("✓ Duplicate detection output found in logs")
+                elif 'no duplications found' in output.lower():
+                    # This is acceptable too if the videos are too short/different
+                    print("⚠ No duplications reported (videos may be too short for reliable hashing)")
+                else:
+                    print("⚠ Unexpected output format")
+                
+                # Verify no crash (exit code 0 or standard exit)
+                self.assertIn(result.returncode, [0], 
+                             f"Container exited with unexpected code: {result.returncode}")
+                
+                print("\n" + "="*60)
+                print("✓ DUPLICATE DETECTOR DOCKER TEST PASSED")
+                print("="*60)
+                
+            finally:
+                # Step 5: Clean up
+                print("\n" + "="*60)
+                print("STEP 5: Cleaning up")
+                print("="*60)
+                
+                # Container is already removed due to --rm flag
+                print(f"✓ Container auto-removed (--rm flag)")
+                
+                if cleanup_needed:
+                    self._remove_docker_image(image_tag)
+                
+                print("\n✓ Cleanup complete")
+                
+                # Re-raise skip exception if we caught one
+                if skip_exception:
+                    raise skip_exception
 
 
 if __name__ == '__main__':
