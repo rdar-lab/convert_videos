@@ -233,7 +233,6 @@ def create_distribution_package(platform_name):
     shutil.copy2(dd_exe_path, package_dir / dd_exe_name)
     logger.info(f"Packaged DD executable: {dd_exe_name}")
 
-
     shutil.copy2(gui_exe_path, package_dir / gui_exe_name)
     logger.info(f"Packaged GUI executable: {gui_exe_name}")
 

@@ -157,32 +157,26 @@ class TestConvertVideosCLI(unittest.TestCase):
         # Should have called sleep (attempted to loop)
         mock_sleep.assert_called()
     
-    @patch('convert_videos_cli.sys.exit')
     @patch('convert_videos_cli.configuration_manager.load_config')
     @patch('convert_videos_cli.logging_utils.setup_logging')
-    def test_main_with_validation_errors(self, mock_logging, mock_config, mock_exit):
+    def test_main_with_validation_errors(self, mock_logging, mock_config):
         """Test CLI with configuration validation errors."""
         # Mock configuration with validation errors
         # When there are validation errors, config content doesn't matter since we exit
         mock_config.return_value = ({}, ['Error 1', 'Error 2'])
         
-        # Make sys.exit raise SystemExit to stop execution
-        mock_exit.side_effect = SystemExit(1)
-        
         test_args = ['convert_videos_cli.py', '/test/dir']
         with patch.object(sys, 'argv', test_args):
-            with self.assertRaises(SystemExit):
-                convert_videos_cli.main()
+            with self.assertRaises(SystemExit) as cm:
+                build_executable.main()
+            self.assertEqual(cm.exception.code, 1)
         
-        # Should exit with error code 1
-        mock_exit.assert_called_with(1)
     
-    @patch('convert_videos_cli.sys.exit')
     @patch('convert_videos_cli.dependencies_utils.validate_dependencies')
     @patch('convert_videos_cli.configuration_manager.load_config')
     @patch('convert_videos_cli.logging_utils.setup_logging')
     def test_main_with_dependency_validation_failure(self, mock_logging, mock_config,
-                                                     mock_validate, mock_exit):
+                                                     mock_validate):
         """Test CLI when dependency validation fails."""
         mock_config.return_value = ({
             'directory': '/test/dir',
@@ -198,23 +192,19 @@ class TestConvertVideosCLI(unittest.TestCase):
         # Dependency validation fails
         mock_validate.return_value = False
         
-        # Make sys.exit raise SystemExit to stop execution
-        mock_exit.side_effect = SystemExit(1)
-        
         test_args = ['convert_videos_cli.py', '/test/dir']
         with patch.object(sys, 'argv', test_args):
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(SystemExit) as cm:
                 convert_videos_cli.main()
-        
-        mock_exit.assert_called_with(1)
-    
-    @patch('convert_videos_cli.sys.exit')
+            self.assertEqual(cm.exception.code, 1)
+
+
     @patch('convert_videos_cli.dependencies_utils.download_dependencies')
     @patch('convert_videos_cli.dependencies_utils.validate_dependencies')
     @patch('convert_videos_cli.configuration_manager.load_config')
     @patch('convert_videos_cli.logging_utils.setup_logging')
     def test_main_with_auto_download_success(self, mock_logging, mock_config, mock_validate,
-                                             mock_download, mock_exit):
+                                             mock_download):
         """Test CLI with auto-download dependencies success."""
         mock_config.return_value = ({
             'directory': '/test/dir',
@@ -233,7 +223,9 @@ class TestConvertVideosCLI(unittest.TestCase):
         with patch('convert_videos_cli.convert_videos.find_eligible_files', return_value=[]):
             test_args = ['convert_videos_cli.py', '--auto-download-dependencies', '/test/dir']
             with patch.object(sys, 'argv', test_args):
-                convert_videos_cli.main()
+                with self.assertRaises(SystemExit) as cm:
+                    convert_videos_cli.main()
+                self.assertEqual(cm.exception.code, 1)
         
         # Should have attempted download
         mock_download.assert_called_once()
@@ -241,12 +233,11 @@ class TestConvertVideosCLI(unittest.TestCase):
         # Should validate with downloaded dependencies
         mock_validate.assert_called_once()
     
-    @patch('convert_videos_cli.sys.exit')
     @patch('convert_videos_cli.dependencies_utils.download_dependencies')
     @patch('convert_videos_cli.configuration_manager.load_config')
     @patch('convert_videos_cli.logging_utils.setup_logging')
     def test_main_with_auto_download_failure(self, mock_logging, mock_config, 
-                                             mock_download, mock_exit):
+                                             mock_download):
         """Test CLI with auto-download dependencies failure."""
         mock_config.return_value = ({
             'directory': '/test/dir',
@@ -261,17 +252,13 @@ class TestConvertVideosCLI(unittest.TestCase):
         # Mock failed download (returns None or incomplete)
         mock_download.return_value = (None, None, None)
         
-        # Make sys.exit raise SystemExit to stop execution
-        mock_exit.side_effect = SystemExit(1)
-        
         test_args = ['convert_videos_cli.py', '--auto-download-dependencies', '/test/dir']
         with patch.object(sys, 'argv', test_args):
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(SystemExit) as cm:
                 convert_videos_cli.main()
-        
-        # Should exit with error (may be called multiple times)
-        mock_exit.assert_called_with(1)
-    
+            self.assertEqual(cm.exception.code, 1)
+
+
     @patch('convert_videos_cli.convert_videos.convert_file')
     @patch('convert_videos_cli.convert_videos.find_eligible_files')
     @patch('convert_videos_cli.dependencies_utils.validate_dependencies')
