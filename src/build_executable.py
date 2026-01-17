@@ -17,6 +17,7 @@ Usage:
 """
 
 import argparse
+import os
 import platform
 import shutil
 import subprocess
@@ -184,9 +185,15 @@ def build_with_pyinstaller(spec_file):
         work_dir.mkdir(exist_ok=True)
 
         # Run PyInstaller from the src directory
+        # Set PYTHONPATH to only include src/ to avoid picking up root wrappers
+        env = os.environ.copy()
+        env['PYTHONPATH'] = str(src_dir)
+        
         subprocess.check_call(
-            [sys.executable, '-m', 'PyInstaller', str(spec_file), '--clean', '--noconfirm', '--distpath', dist_dir, '--workpath', work_dir],
-            cwd=str(src_dir))
+            [sys.executable, '-m', 'PyInstaller', str(spec_file), '--clean', '--noconfirm', 
+             '--distpath', str(dist_dir), '--workpath', str(work_dir)],
+            cwd=str(src_dir),
+            env=env)
         logger.info("Build completed successfully!")
         return True
     except subprocess.CalledProcessError as e:
