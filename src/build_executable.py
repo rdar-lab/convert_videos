@@ -22,6 +22,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 import logging
 
@@ -191,7 +192,6 @@ def build_with_pyinstaller(spec_file):
 
         # Create a temporary directory OUTSIDE the repo to run PyInstaller from
         # This prevents the repo root from being automatically added to sys.path
-        import tempfile
         with tempfile.TemporaryDirectory() as temp_dir:
             # Set environment with ONLY src in PYTHONPATH
             env = os.environ.copy()
