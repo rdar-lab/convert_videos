@@ -7,6 +7,7 @@ import os
 import subprocess
 import tempfile
 import logging
+import uuid
 from pathlib import Path
 import sys
 import argparse
@@ -82,7 +83,7 @@ def create_comparison_thumbnail(thumbnail_paths, output_dir=None):
         if output_dir:
             output_dir = Path(output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / f"comparison_{tempfile.mktemp().split('/')[-1]}.jpg"
+            output_path = output_dir / f"comparison_{uuid.uuid4().hex[:12]}.jpg"
             combined.save(output_path, format='JPEG')
             return str(output_path)
         else:

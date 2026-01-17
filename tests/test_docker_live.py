@@ -20,6 +20,7 @@ from pathlib import Path
 import yaml
 import pytest
 import shutil
+from PIL import Image
 
 
 # Mark all tests in this module as 'docker' to exclude from default test runs
@@ -643,7 +644,6 @@ class TestDockerLive(unittest.TestCase):
                     
                     # Verify it's a valid JPEG image
                     try:
-                        from PIL import Image
                         img = Image.open(thumb_file)
                         img.verify()
                         print(f"    ✓ Valid JPEG image: {img.format}, {img.size}")
