@@ -1,6 +1,9 @@
 #!/usr/bin/bash
 set -e
 
+# Populate ARGS array from script arguments
+ARGS=("$@")
+
 # Now safely get the directory
 TARGET_DIR=${ARGS[0]:-/data}
 

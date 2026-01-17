@@ -241,12 +241,13 @@ Examples:
         """
     )
     parser.add_argument('directory',
-                        help='Directory to scan duplicates on')
+                        help='Directory to scan for duplicates')
     parser.add_argument('--distance',
+                        type=int,
                         help='Max hamming distance (default 5)')
     parser.add_argument('--auto-download-dependencies',
                         action='store_true',
-                        help='Automatically download dependencies if not found (HandBrakeCLI, ffprobe)')
+                        help='Automatically download dependencies if not found (HandBrakeCLI, ffprobe, ffmpeg)')
     args = parser.parse_args()
 
     # Print to stderr first for immediate visibility (before logging is setup)
@@ -259,15 +260,7 @@ Examples:
     logger.info(f"Arguments: {vars(args)}")
 
     target_directory = args.directory
-    distance = args.distance
-    if not distance:
-        distance = 5
-    else:
-        try:
-            distance = int(distance)
-        except ValueError:
-            logger.error("Invalid distance value provided. Must be an integer.")
-            sys.exit(1)
+    distance = args.distance if args.distance is not None else 5
 
     dependency_config = dependencies_utils.get_dependencies_path()
 
@@ -310,7 +303,5 @@ Examples:
     logger.info("=== Duplicate detector finished ===")
 
 if __name__ == '__main__':
-
     main()
-    
 

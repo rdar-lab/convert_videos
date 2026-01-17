@@ -218,7 +218,7 @@ def create_distribution_package(platform_name):
         sys.exit(1)
 
     if not gui_exe_path.exists():
-        logger.error(f"Error: CLI executable not found at {cli_exe_path}")
+        logger.error(f"Error: GUI executable not found at {gui_exe_path}")
         sys.exit(1)
 
     # Create package directory
