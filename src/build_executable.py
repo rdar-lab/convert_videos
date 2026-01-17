@@ -187,13 +187,22 @@ def build_with_pyinstaller(spec_file):
         # Run PyInstaller from the src directory
         # Set PYTHONPATH to only include src/ to avoid picking up root wrappers
         env = os.environ.copy()
-        env['PYTHONPATH'] = str(src_dir)
+        # Prepend src_dir to existing PYTHONPATH if it exists
+        existing_path = env.get('PYTHONPATH', '')
+        env['PYTHONPATH'] = str(src_dir) + (os.pathsep + existing_path if existing_path else '')
         
         subprocess.check_call(
-            [sys.executable, '-m', 'PyInstaller', str(spec_file), '--clean', '--noconfirm', 
-             '--distpath', str(dist_dir), '--workpath', str(work_dir)],
+            [
+                sys.executable, '-m', 'PyInstaller',
+                str(spec_file),
+                '--clean',
+                '--noconfirm',
+                '--distpath', str(dist_dir),
+                '--workpath', str(work_dir)
+            ],
             cwd=str(src_dir),
-            env=env)
+            env=env
+        )
         logger.info("Build completed successfully!")
         return True
     except subprocess.CalledProcessError as e:
