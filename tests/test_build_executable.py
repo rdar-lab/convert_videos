@@ -268,13 +268,15 @@ class TestCreateDistributionPackage(unittest.TestCase):
         self.assertIn('gztar', call_args)
     
     @patch('build_executable.Path.exists')
-    def test_create_distribution_package_no_cli_exe(self):
+    def test_create_distribution_package_no_cli_exe(self, mock_exists):
         """Test error when CLI executable is missing."""
-
-        result = build_executable.create_distribution_package('linux')
+        mock_exists.return_value = False
 
         with self.assertRaises(SystemExit) as cm:        
-            mock_exit.assert_called_with(1)
+            result = build_executable.create_distribution_package('linux')
+
+        self.assertEqual(cm.exception.code, 1)
+        mock_exit.assert_called_with(1)
 
 
 class TestMain(unittest.TestCase):

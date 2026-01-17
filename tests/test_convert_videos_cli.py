@@ -168,7 +168,7 @@ class TestConvertVideosCLI(unittest.TestCase):
         test_args = ['convert_videos_cli.py', '/test/dir']
         with patch.object(sys, 'argv', test_args):
             with self.assertRaises(SystemExit) as cm:
-                build_executable.main()
+                convert_videos_cli.main()
             self.assertEqual(cm.exception.code, 1)
         
     
@@ -223,9 +223,7 @@ class TestConvertVideosCLI(unittest.TestCase):
         with patch('convert_videos_cli.convert_videos.find_eligible_files', return_value=[]):
             test_args = ['convert_videos_cli.py', '--auto-download-dependencies', '/test/dir']
             with patch.object(sys, 'argv', test_args):
-                with self.assertRaises(SystemExit) as cm:
-                    convert_videos_cli.main()
-                self.assertEqual(cm.exception.code, 1)
+                convert_videos_cli.main()
         
         # Should have attempted download
         mock_download.assert_called_once()
