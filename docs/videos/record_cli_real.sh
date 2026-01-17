@@ -1,6 +1,8 @@
 #!/bin/bash
 # Real CLI recording script
-cd /home/runner/work/convert_videos/convert_videos
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$REPO_ROOT"
 
 echo "=== Video Converter CLI Demo ==="
 echo ""

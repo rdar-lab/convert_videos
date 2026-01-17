@@ -1,6 +1,8 @@
 #!/bin/bash
 # Real duplicate detector recording script
-cd /home/runner/work/convert_videos/convert_videos
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$REPO_ROOT"
 
 echo "=== Video Duplicate Detector Demo ==="
 echo ""
