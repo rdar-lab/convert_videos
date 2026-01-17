@@ -2,47 +2,58 @@
 
 This directory contains demonstration videos for the convert_videos project.
 
-## Required Videos
+## Current Videos
 
-1. **cli-demo.gif** or **cli-demo.mp4** - Demonstration of CLI usage
-2. **gui-demo.gif** or **gui-demo.mp4** - Demonstration of GUI usage
-3. **duplicate-detector-demo.gif** or **duplicate-detector-demo.mp4** - Demonstration of duplicate detection
+1. **cli-demo-real.gif** (1.2MB) - Real terminal recording of CLI usage
+2. **gui-demo-real.gif** (228KB) - Visual demonstration of GUI features
+3. **duplicate-detector-demo-real.gif** (1.1MB) - Real terminal recording of duplicate detection
 
-## Recording Instructions
+## How These Were Created
 
-Please see [RECORDING_GUIDE.md](../RECORDING_GUIDE.md) for detailed instructions on how to create these demonstration videos.
+### CLI and Duplicate Detector Demos
+
+The CLI and duplicate detector demos were created using:
+- `asciinema` to record actual terminal sessions running the real tools
+- `agg` (asciinema GIF generator) to convert recordings to animated GIFs
+- Real test video files for demonstration
+
+### GUI Demo
+
+The GUI demo was created using:
+- Text descriptions of each GUI tab
+- ImageMagick to generate slides from text
+- FFmpeg to create a video slideshow
+- FFmpeg palette optimization to convert to animated GIF
 
 ## File Requirements
 
-- **Format**: GIF or MP4 (H.264/H.265 codec)
-- **Maximum size**: 10MB per file (for GitHub web interface)
-- **Resolution**: 1280x720 or 1920x1080
-- **Duration**: 30-90 seconds
+- **Format**: GIF (animated)
+- **CLI Demo**: 1.2MB - Shows actual terminal output
+- **GUI Demo**: 228KB - Text-based slides showing GUI features
+- **Duplicate Detector**: 1.1MB - Shows actual terminal output
 
-## Current Status
+## Regenerating Demos
 
-- [x] cli-demo.svg (CLI usage demonstration - Animated SVG)
-- [x] gui-demo.svg (GUI usage demonstration - Animated SVG)
-- [x] duplicate-detector-demo.svg (Duplicate detection demonstration - Animated SVG)
-
-**Note**: These are animated SVG demonstrations created with termtosvg. They show simulated terminal output demonstrating how to use each feature. For actual screen recordings with real application footage, see the placeholder files and [RECORDING_GUIDE.md](../RECORDING_GUIDE.md).
-
-## Using Git LFS
-
-If video files are larger than 10MB, consider using Git LFS:
+To regenerate the demos:
 
 ```bash
-# Install Git LFS
-git lfs install
+# CLI Demo
+cd docs/videos
+asciinema rec -c "./record_cli_real.sh" cli-demo-real.cast
+agg cli-demo-real.cast cli-demo-real.gif
 
-# Track video files
-git lfs track "*.mp4"
-git lfs track "*.gif"
+# Duplicate Detector Demo
+asciinema rec -c "./record_duplicate_real.sh" duplicate-detector-demo-real.cast
+agg duplicate-detector-demo-real.cast duplicate-detector-demo-real.gif
 
-# Add .gitattributes
-git add .gitattributes
-
-# Add and commit videos
-git add docs/videos/*.mp4
-git commit -m "Add demo videos"
+# GUI Demo
+bash create_gui_video.sh
 ```
+
+## Notes
+
+- All demos are actual recordings or demonstrations of the real tools
+- The GIF format provides wide compatibility and auto-plays in GitHub
+- Files are kept under GitHub's size limits
+- Asciinema recordings (.cast files) are preserved for future regeneration
+

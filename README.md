@@ -16,19 +16,19 @@ Benefits:
 
 Demonstrates command-line usage including dry-run mode, conversion progress, and results.
 
-![CLI Demo](docs/videos/cli-demo.svg)
+![CLI Demo](docs/videos/cli-demo-real.gif)
 
 ### 🖥️ GUI Usage
 
 Shows the graphical interface with configuration editor, file queue, live progress, and results dashboard.
 
-![GUI Demo](docs/videos/gui-demo.svg)
+![GUI Demo](docs/videos/gui-demo-real.gif)
 
 ### 🔍 Duplicate Detection
 
 Demonstrates the duplicate video detection feature with perceptual hashing and thumbnail comparisons.
 
-![Duplicate Detection Demo](docs/videos/duplicate-detector-demo.svg)
+![Duplicate Detection Demo](docs/videos/duplicate-detector-demo-real.gif)
 
 ---
 
