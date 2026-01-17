@@ -3,7 +3,7 @@ set -e
 
 # Build command with appropriate flags using array
 # Use -u flag for unbuffered output so logs appear immediately in Docker
-CMD_ARGS=('python3' '-u' 'convert_vidoes_cli.py')
+CMD_ARGS=('python3' '-u' 'convert_vidoes_cli_runner.py')
 
 # Add all the arguments that were passed to the script
 CMD_ARGS+=("$@")

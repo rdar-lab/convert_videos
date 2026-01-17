@@ -18,7 +18,7 @@ The default mode launches a graphical user interface when no arguments are provi
 
 ```bash
 # Launch GUI
-python convert_videos_gui.py
+python convert_videos_gui_runner.py
 ```
 
 The GUI provides:
@@ -36,16 +36,25 @@ Background mode is used when providing arguments (directory, config, flags) or e
 
 ```bash
 # Run with config file
-python convert_videos_cli.py --config config.yaml
+python convert_videos_cli_runner.py --config config.yaml
 
 # Single run with directory
-python convert_videos_cli.py /path/to/videos
+python convert_videos_cli_runner.py /path/to/videos
 
 # Continuous monitoring (scans every hour)
-python convert_videos.py --loop /path/to/videos
+python convert_videos_cli_runner.py --loop /path/to/videos
 
 # Docker mode 
 docker run -d -v /path/to/videos:/data rdxmaster/convert_videos
+```
+
+### Duplicate detector (CLI)
+
+You can also run the duplicate detector to find duplicate video files based on content hash:
+
+```bash
+# Run duplicate detector
+python duplicate_detector_runner.py /path/to/videos
 ```
 
 ## Configuration
@@ -94,15 +103,15 @@ The tool creates a log file that captures all important events, including:
 
 ```bash
 # Use custom log file via command line
-python convert_videos.py --log-file /var/log/convert_videos.log /path/to/videos
+python convert_videos_cli_runner.py --log-file /var/log/convert_videos.log /path/to/videos
 
 # Use custom log file via environment variable
 export VIDEO_CONVERTER_LOG_FILE=/var/log/convert_videos.log
-python convert_videos.py /path/to/videos
+python convert_videos_cli_runner.py /path/to/videos
 
 # Use custom log file via config file
 # (Set logging.log_file in config.yaml)
-python convert_videos.py --config config.yaml
+python convert_videos_cli_runner.py --config config.yaml
 ```
 
 ### Encoder Options
@@ -114,14 +123,11 @@ python convert_videos.py --config config.yaml
 ### Using Configuration File
 
 ```bash
-# Use config.yaml in current directory
-python convert_videos.py
-
 # Specify a custom config file
-python convert_videos.py --config /path/to/config.yaml
+python convert_videos_cli_runner.py --config /path/to/config.yaml
 
 # Command line arguments override config file settings
-python convert_videos.py --config config.yaml --dry-run /custom/path
+python convert_videos_cli_runner.py --config config.yaml --dry-run /custom/path
 ```
 
 ## Installation & Usage
@@ -146,6 +152,10 @@ Pre-built portable executables are available for Windows, Linux, and macOS from 
    - **CLI Mode (for background/automated tasks):**
      - Linux/macOS: `./convert_videos_cli [options]`
      - Windows: `convert_videos_cli.exe [options]`
+   - **Duplicate Detector (CLI):**
+     - Linux/macOS: `./duplicate_detector [options]`
+     - Windows: `duplicate_detector.exe [options]`
+  
 
 The GUI executable runs without a console window for a clean experience. The CLI executable always runs in background mode, supports all command-line options, and is suitable for scripts and automation.
 
@@ -161,12 +171,7 @@ See **[WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md)** for detailed Windows insta
 # Install Python dependencies:
 pip install -r requirements.txt
 
-# Run with GUI:
-python convert_videos_gui.py
-
-# Or run with directory (background mode):
-python convert_videos_cli.py "C:\Path\To\Videos"
-
+# Run the commands (see above for GUI or CLI)
 ```
 
 ### Linux/macOS (Without Docker)
@@ -182,15 +187,6 @@ pip3 install -r requirements.txt
 # macOS (using Homebrew)
 brew install python3 ffmpeg handbrake
 pip3 install -r requirements.txt
-```
-
-**Run the script:**
-```bash
-# Run with GUI:
-python3 convert_videos_gui.py
-
-# Run with directory (background mode):
-python3 convert_videos.py /path/to/videos
 ```
 
 ### Docker (Linux)
@@ -213,11 +209,11 @@ docker run \
 
 ## Dependencies
 
-- **Python 3.8+** (for the Python script)
-- **FFmpeg** (provides `ffprobe` for video analysis)
+- **Python 3.11+** (for the Python script)
+- **FFmpeg** (provides also `ffprobe` for video analysis)
 - **HandBrakeCLI** (for video conversion)
 
-## What It Does
+## What It Does (Convert videos)
 
 1. Scans the specified directory and all subdirectories
 2. Finds video files (MP4, MKV, MOV, AVI) that are 1GB or larger
@@ -228,10 +224,21 @@ docker run \
 7. Validates the conversion by comparing video durations
 8. By default, preserves the original file (unless `remove_original_files: true` in config)
 
+## What it does (Duplicate Detector)
+1. Scans the specified directory and all subdirectories
+2. Finds video files (MP4, MKV, MOV, AVI)
+3. Gets the length of each video
+4. Extract an image frame at the midpoint of each video
+5. Computes a perceptual hash of the extracted frame
+6. Compares hashes of videos with similar lengths to find duplicates
+7. Outputs a list of duplicate files found with thumbnail images
+
+
 ## File Naming
 
 - Converted files: `[Original Name].converted.mkv` (or with counter if collision: `[Original Name].converted.1.mkv`)
 - Failed conversions: `[Original Name].[ext].fail` (or with counter: `[Original Name].[ext].fail_1`)
+- Original files after conversion: `[Original Name].orig.mkv`
 
 ## Advanced Options
 
@@ -246,13 +253,7 @@ remove_original_files: true
 
 **Command line flag:**
 ```bash
-python convert_videos.py --remove-original-files /path/to/videos
-```
-
-**Environment variable:**
-```bash
-export VIDEO_CONVERTER_PRESERVE_ORIGINAL=true
-python convert_videos.py /path/to/videos
+python convert_videos_cli_runner.py --remove-original-files /path/to/videos
 ```
 
 ## Development & Testing

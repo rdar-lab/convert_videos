@@ -6,7 +6,7 @@ This guide will help you set up and run the video converter on Windows without D
 
 You need to install the following dependencies:
 
-### 1. Python 3.8 or higher
+### 1. Python 3.11 or higher
 
 1. Download Python from [python.org](https://www.python.org/downloads/)
 2. During installation, make sure to check "Add Python to PATH"
@@ -76,84 +76,7 @@ choco install handbrake-cli
    ```cmd
    pip install -r requirements.txt
    ```
-
-## Usage
-
-### GUI Mode (Default) - Recommended for Desktop Use
-
-Run the application with a graphical user interface (default when no arguments):
-```cmd
-python convert_videos.py
-```
-
-The GUI provides:
-- Easy configuration editing with validation
-- Visual queue of files to process
-- Real-time progress monitoring
-- Results dashboard showing space savings and conversion status
-
-**Note**: GUI mode requires a display. For headless/server use or with config files, see Background Mode below.
-
-### Background Mode (Command Line)
-
-Background mode is used automatically when providing arguments:
-
-Convert videos in a specific folder:
-```cmd
-python convert_videos.py "C:\Path\To\Your\Videos"
-```
-
-Use a configuration file:
-```cmd
-python convert_videos.py --config config.yaml
-```
-
-### Dry Run Mode
-
-See what would be converted without actually converting:
-```cmd
-python convert_videos.py --dry-run "C:\Path\To\Your\Videos"
-```
-
-### Continuous Monitoring
-
-Run in a loop that checks for new files every hour:
-```cmd
-python convert_videos.py --loop "C:\Path\To\Your\Videos"
-```
-
-### Remove Original Files
-
-Remove original files after successful conversion (default is to keep them):
-```cmd
-python convert_videos.py --remove-original-files "C:\Path\To\Your\Videos"
-```
-
-Or set in configuration file:
-```yaml
-remove_original_files: true
-```
-
-### Using PowerShell
-
-In PowerShell, you can use forward slashes or backslashes:
-```powershell
-python convert_videos.py "C:/Path/To/Your/Videos"
-```
-
-## What It Does
-
-The script will:
-1. Scan the specified directory and all subdirectories
-2. Find video files (MP4, MKV, MOV, AVI) that are 1GB or larger
-3. Skip files marked as `.fail` (from previous failed conversions)
-4. Check if they're already encoded with H.265 (HEVC)
-5. Convert non-HEVC videos to H.265 using HandBrakeCLI
-6. Preserve all audio tracks and subtitles from the original file
-7. Validate the conversion by comparing video durations
-8. By default, keep the original file (unless `--remove-original-files` is used)
-9. Mark the original file as `.fail` if there's a duration mismatch
-
+   
 ## Running as a Background Task
 
 ### Option 1: Using Task Scheduler
