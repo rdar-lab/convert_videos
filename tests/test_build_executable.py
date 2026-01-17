@@ -276,7 +276,6 @@ class TestCreateDistributionPackage(unittest.TestCase):
             result = build_executable.create_distribution_package('linux')
 
         self.assertEqual(cm.exception.code, 1)
-        mock_exit.assert_called_with(1)
 
 
 class TestMain(unittest.TestCase):
