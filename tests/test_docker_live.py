@@ -546,12 +546,18 @@ class TestDockerLive(unittest.TestCase):
                 print("STEP 3: Running Duplicate Detector Docker container")
                 print("="*60)
                 
+                # Create a directory for thumbnails
+                thumbs_dir = tmpdir_path / 'thumbs'
+                thumbs_dir.mkdir(exist_ok=True)
+                print(f"Created thumbnails directory: {thumbs_dir}")
+                
                 # Run container and capture output
                 cmd = [
                     'docker', 'run',
                     '--rm',  # Remove container after execution
                     '--name', container_name,
                     '-v', f'{tmpdir_path}:/data',
+                    '-v', f'{thumbs_dir}:/thumbs',  # Mount thumbs directory
                     image_tag,
                     '/data'  # Directory to scan
                 ]
@@ -606,7 +612,7 @@ class TestDockerLive(unittest.TestCase):
                 self.assertIsNotNone(thumbnail_line, 
                                    "Expected at least one comparison thumbnail line in output")
                 
-                # Extract path from line like "Comparison Thumbnail: /tmp/comparison_abc123.jpg"
+                # Extract path from line like "Comparison Thumbnail: /thumbs/comparison_abc123.jpg"
                 parts = thumbnail_line.split('Comparison Thumbnail:', maxsplit=1)
                 self.assertEqual(len(parts), 2, 
                                "Expected 'Comparison Thumbnail:' to be in the line")
@@ -617,11 +623,34 @@ class TestDockerLive(unittest.TestCase):
                               "Comparison thumbnail path is empty")
                 self.assertTrue(thumbnail_path_str.endswith('.jpg'), 
                               f"Comparison thumbnail path should end with .jpg: {thumbnail_path_str}")
-                self.assertIn('comparison', thumbnail_path_str.lower(), 
-                            f"Comparison thumbnail path should contain 'comparison': {thumbnail_path_str}")
+                self.assertIn('/thumbs/', thumbnail_path_str, 
+                            f"Comparison thumbnail path should be in /thumbs/: {thumbnail_path_str}")
                 
-                print(f"✓ Comparison thumbnail path validated: {thumbnail_path_str}")
-                print(f"  Note: Thumbnail created inside container (not accessible from host)")
+                print(f"✓ Comparison thumbnail path in output: {thumbnail_path_str}")
+                
+                # Verify the thumbnail file actually exists in the mounted thumbs directory
+                thumbnail_files = list(thumbs_dir.glob('comparison_*.jpg'))
+                self.assertGreater(len(thumbnail_files), 0, 
+                                 "Expected at least one comparison thumbnail file in thumbs directory")
+                
+                print(f"✓ Found {len(thumbnail_files)} thumbnail file(s) in {thumbs_dir}")
+                for thumb_file in thumbnail_files:
+                    self.assertTrue(thumb_file.exists(), 
+                                  f"Thumbnail file {thumb_file} does not exist")
+                    self.assertGreater(thumb_file.stat().st_size, 0, 
+                                     f"Thumbnail file {thumb_file} is empty")
+                    print(f"  - {thumb_file.name}: {thumb_file.stat().st_size} bytes")
+                    
+                    # Verify it's a valid JPEG image
+                    try:
+                        from PIL import Image
+                        img = Image.open(thumb_file)
+                        img.verify()
+                        print(f"    ✓ Valid JPEG image: {img.format}, {img.size}")
+                    except Exception as e:
+                        self.fail(f"Thumbnail file {thumb_file} is not a valid image: {e}")
+                
+                print("✓ All thumbnail files validated successfully")
                 
                 print("\n" + "="*60)
                 print("✓ DUPLICATE DETECTOR DOCKER TEST PASSED")

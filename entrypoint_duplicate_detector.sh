@@ -13,5 +13,8 @@ CMD_ARGS=('python3' '-u' 'duplicate_detector.py')
 
 CMD_ARGS+=("$TARGET_DIR")
 
+# Add thumbnails directory (default to /thumbs in Docker)
+CMD_ARGS+=('--thumbnails-dir' '/thumbs')
+
 # Execute the command
 exec "${CMD_ARGS[@]}"
