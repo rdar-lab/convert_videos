@@ -602,12 +602,15 @@ class TestDockerLive(unittest.TestCase):
                 print("✓ Comparison thumbnail was generated")
                 
                 # Extract and validate thumbnail path from output
-                thumbnail_lines = [line for line in output.split('\n') if 'Comparison Thumbnail:' in line]
-                self.assertGreater(len(thumbnail_lines), 0, 
-                                 "Expected at least one comparison thumbnail line in output")
+                thumbnail_line = next((line for line in output.split('\n') if 'Comparison Thumbnail:' in line), None)
+                self.assertIsNotNone(thumbnail_line, 
+                                   "Expected at least one comparison thumbnail line in output")
                 
                 # Extract path from line like "Comparison Thumbnail: /tmp/comparison_abc123.jpg"
-                thumbnail_path_str = thumbnail_lines[0].split('Comparison Thumbnail:')[1].strip()
+                parts = thumbnail_line.split('Comparison Thumbnail:', maxsplit=1)
+                self.assertEqual(len(parts), 2, 
+                               "Expected 'Comparison Thumbnail:' to be in the line")
+                thumbnail_path_str = parts[1].strip()
                 
                 # Validate the thumbnail path is not empty and looks like a valid file path
                 self.assertTrue(len(thumbnail_path_str) > 0, 
@@ -619,7 +622,6 @@ class TestDockerLive(unittest.TestCase):
                 
                 print(f"✓ Comparison thumbnail path validated: {thumbnail_path_str}")
                 print(f"  Note: Thumbnail created inside container (not accessible from host)")
-
                 
                 print("\n" + "="*60)
                 print("✓ DUPLICATE DETECTOR DOCKER TEST PASSED")
