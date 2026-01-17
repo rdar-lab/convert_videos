@@ -160,7 +160,7 @@ jobs:
         platforms: linux/amd64
 
 
-  build-docker:
+  build-docker-duplicate-detector:
     runs-on: ubuntu-latest
     permissions:
       contents: read
