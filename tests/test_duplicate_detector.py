@@ -11,8 +11,7 @@ from unittest.mock import patch, MagicMock
 
 from duplicate_detector import (
     DuplicateResult, hamming_distance, create_comparison_thumbnail,
-    scan_for_duplicates, MAX_HAMMING_DISTANCE_ERROR, normalize_directories,
-    resolve_duplicate_file_path, main
+    scan_for_duplicates, MAX_HAMMING_DISTANCE_ERROR, normalize_directories, main
 )
 from PIL import Image
 
@@ -146,29 +145,6 @@ class TestScanForDuplicates(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             directories = normalize_directories([tmpdir, tmpdir])
             self.assertEqual(directories, [os.path.realpath(tmpdir)])
-
-    def test_resolve_same_filename_uses_exact_tree_item(self):
-        """Test same filenames in different directories resolve exactly."""
-        files = [
-            "/local/videos/movie.mp4",
-            "/shared/videos/movie.mp4"
-        ]
-        self.assertEqual(
-            resolve_duplicate_file_path(
-                files, "/shared/videos/movie.mp4", "movie.mp4"
-            ),
-            "/shared/videos/movie.mp4"
-        )
-
-    def test_resolve_same_filename_rejects_ambiguous_fallback(self):
-        """Test basename fallback does not select the wrong same-name file."""
-        files = [
-            "/local/videos/movie.mp4",
-            "/shared/videos/movie.mp4"
-        ]
-        self.assertIsNone(
-            resolve_duplicate_file_path(files, "unknown-row", "movie.mp4")
-        )
 
     @patch('duplicate_detector.run_command')
     @patch('duplicate_detector.os.walk')

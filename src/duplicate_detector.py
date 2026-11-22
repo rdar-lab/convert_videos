@@ -74,19 +74,6 @@ def normalize_directories(directory):
     return normalized
 
 
-def resolve_duplicate_file_path(files, tree_item, file_name):
-    """Resolve a GUI duplicate row to its exact file path."""
-    for file_path in files:
-        if str(file_path) == str(tree_item):
-            return str(file_path)
-
-    matching_paths = [
-        str(file_path) for file_path in files
-        if Path(str(file_path)).name == file_name
-    ]
-    return matching_paths[0] if len(matching_paths) == 1 else None
-
-
 def create_comparison_thumbnail(thumbnail_paths, output_dir=None):
     """Create a side-by-side comparison thumbnail from two images.
     
