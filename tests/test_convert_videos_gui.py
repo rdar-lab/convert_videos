@@ -8,7 +8,8 @@ import unittest
 # Import the GUI module (but don't run GUI components)
 try:
     from convert_videos_gui import (
-        ConversionResult, VideoConverterGUI, parse_duplicate_directories
+        ConversionResult, VideoConverterGUI, parse_duplicate_directories,
+        resolve_duplicate_file_path
     )
     GUI_AVAILABLE = True
 except ImportError:
@@ -77,6 +78,35 @@ class TestVideoConverterGUIHelpers(unittest.TestCase):
         self.assertEqual(
             parse_duplicate_directories("/local/videos; D:/shared/videos"),
             ["/local/videos", "D:/shared/videos"]
+        )
+
+    def test_resolve_duplicate_file_path_with_same_filename(self):
+        """Test same filenames in different directories resolve exactly."""
+        duplicate_result = type('DuplicateResult', (), {})()
+        duplicate_result.files = [
+            "/local/videos/movie.mp4",
+            "/shared/videos/movie.mp4"
+        ]
+
+        self.assertEqual(
+            resolve_duplicate_file_path(
+                duplicate_result, "/shared/videos/movie.mp4", "movie.mp4"
+            ),
+            "/shared/videos/movie.mp4"
+        )
+
+    def test_resolve_duplicate_file_path_rejects_ambiguous_fallback(self):
+        """Test basename fallback does not choose one of two same-name files."""
+        duplicate_result = type('DuplicateResult', (), {})()
+        duplicate_result.files = [
+            "/local/videos/movie.mp4",
+            "/shared/videos/movie.mp4"
+        ]
+
+        self.assertIsNone(
+            resolve_duplicate_file_path(
+                duplicate_result, "unknown-row", "movie.mp4"
+            )
         )
     
     def test_format_size_bytes(self):

@@ -38,6 +38,21 @@ def parse_duplicate_directories(directory_text):
     ]
 
 
+def resolve_duplicate_file_path(group, tree_item, file_name):
+    """Resolve a duplicate row to the exact file path it represents."""
+    for file_path in group.files:
+        if str(file_path) == str(tree_item):
+            return str(file_path)
+
+    matching_paths = [
+        str(file_path) for file_path in group.files
+        if Path(str(file_path)).name == file_name
+    ]
+    if len(matching_paths) == 1:
+        return matching_paths[0]
+    return None
+
+
 class ConversionResult:
     """Represents the result of a video conversion."""
 
@@ -1176,6 +1191,7 @@ class VideoConverterGUI:
                             thumbnail_path = group.file_thumbnails.get(
                                 str(file_path), '')
                             self.duplicates_tree.insert(group_id, 'end',
+                                                        iid=str(file_path),
                                                         text=file_name,
                                                         values=('', '', thumbnail_path))
 
@@ -1473,10 +1489,7 @@ class VideoConverterGUI:
                 return
 
             group = self.duplicate_results[group_index]
-            for fpath in group.files:
-                if Path(fpath).name == file_name:
-                    file_path = fpath
-                    break
+            file_path = resolve_duplicate_file_path(group, item, file_name)
 
             if not file_path:
                 return
