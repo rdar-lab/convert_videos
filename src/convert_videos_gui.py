@@ -29,6 +29,15 @@ PROGRESS_UPDATE_INTERVAL_MS = 100  # Milliseconds between progress updates
 MAX_OUTPUT_FILE_ATTEMPTS = 100
 
 
+def parse_duplicate_directories(directory_text):
+    """Parse the GUI's semicolon-separated duplicate scan directories."""
+    return [
+        item.strip()
+        for item in directory_text.replace('\n', ';').split(';')
+        if item.strip()
+    ]
+
+
 class ConversionResult:
     """Represents the result of a video conversion."""
 
@@ -379,14 +388,18 @@ class VideoConverterGUI:
             self.duplicates_tab, text="Scan Settings", padding=10)
         dir_frame.pack(fill='x', padx=10, pady=5)
 
-        ttk.Label(dir_frame, text="Directory to Scan:").grid(
+        ttk.Label(dir_frame, text="Directories to Scan:").grid(
             row=0, column=0, sticky='w', pady=5)
         self.dup_dir_entry = ttk.Entry(dir_frame, width=50)
         self.dup_dir_entry.grid(row=0, column=1, padx=5, pady=5)
         default_dir = self.config.get('directory') or os.getcwd()
         self.dup_dir_entry.insert(0, default_dir)
-        ttk.Button(dir_frame, text="Browse...", command=self.browse_duplicate_directory).grid(
+        ttk.Button(dir_frame, text="Add Directory...", command=self.browse_duplicate_directory).grid(
             row=0, column=2, pady=5)
+        ttk.Button(dir_frame, text="Clear", command=self.clear_duplicate_directories).grid(
+            row=0, column=3, pady=5)
+        ttk.Label(dir_frame, text="Separate multiple directories with semicolons (;).").grid(
+            row=2, column=1, columnspan=2, sticky='w')
 
         ttk.Label(dir_frame, text="Max Hamming Distance:").grid(
             row=1, column=0, sticky='w', pady=5)
@@ -470,15 +483,26 @@ class VideoConverterGUI:
     def browse_duplicate_directory(self):
         """Open directory browser for duplicate detection."""
         try:
+            existing_directories = parse_duplicate_directories(
+                self.dup_dir_entry.get())
+            initial_directory = existing_directories[-1] if existing_directories else os.getcwd()
             directory = filedialog.askdirectory(
-                initialdir=self.dup_dir_entry.get())
+                initialdir=initial_directory)
             if directory:
+                existing = self.dup_dir_entry.get().strip()
+                directories = parse_duplicate_directories(existing)
+                if directory not in directories:
+                    directories.append(directory)
                 self.dup_dir_entry.delete(0, tk.END)
-                self.dup_dir_entry.insert(0, directory)
+                self.dup_dir_entry.insert(0, '; '.join(directories))
         except Exception as e:
             logger.error(f"Browse directory error: {repr(e)}")
             messagebox.showerror(
                 "Browse Error", f"Failed to browse directory:\n{repr(e)}")
+
+    def clear_duplicate_directories(self):
+        """Clear all directories selected for duplicate detection."""
+        self.dup_dir_entry.delete(0, tk.END)
 
     def browse_directory(self):
         """Open directory browser."""
@@ -1235,10 +1259,16 @@ class VideoConverterGUI:
 
     def scan_for_duplicates(self):
         """Scan directory for duplicate videos."""
-        directory = self.dup_dir_entry.get().strip()
-        if not directory or not os.path.isdir(directory):
+        directory_text = self.dup_dir_entry.get().strip()
+        directories = parse_duplicate_directories(directory_text)
+        if not directories:
             messagebox.showerror("Invalid Directory",
-                                 "Please select a valid directory to scan")
+                                 "Please select at least one valid directory to scan")
+            return
+        invalid_directories = [item for item in directories if not os.path.isdir(item)]
+        if invalid_directories:
+            messagebox.showerror("Invalid Directory",
+                                 "Please select valid directories to scan")
             return
 
         try:
@@ -1276,7 +1306,7 @@ class VideoConverterGUI:
 
                 # Run duplicate detection
                 duplicate_groups = duplicate_detector.scan_for_duplicates(
-                    directory=directory,
+                    directory=directories,
                     max_distance=max_distance,
                     ffmpeg_path=ffmpeg_path,
                     ffprobe_path=ffprobe_path,

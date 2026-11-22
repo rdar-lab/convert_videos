@@ -55,6 +55,9 @@ You can also run the duplicate detector to find duplicate video files based on c
 ```bash
 # Run duplicate detector
 python duplicate_detector_runner.py /path/to/videos
+
+# Scan multiple directories
+python duplicate_detector_runner.py /path/to/videos /another/path/to/videos
 ```
 
 ## Configuration

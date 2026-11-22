@@ -7,7 +7,9 @@ import unittest
 
 # Import the GUI module (but don't run GUI components)
 try:
-    from convert_videos_gui import ConversionResult, VideoConverterGUI
+    from convert_videos_gui import (
+        ConversionResult, VideoConverterGUI, parse_duplicate_directories
+    )
     GUI_AVAILABLE = True
 except ImportError:
     # tkinter might not be available in headless environments
@@ -69,6 +71,13 @@ class TestConversionResult(unittest.TestCase):
 @unittest.skipIf(not GUI_AVAILABLE, "GUI module not available (tkinter missing)")
 class TestVideoConverterGUIHelpers(unittest.TestCase):
     """Test VideoConverterGUI helper methods."""
+
+    def test_parse_duplicate_directories(self):
+        """Test parsing multiple GUI directory selections."""
+        self.assertEqual(
+            parse_duplicate_directories("/local/videos; D:/shared/videos"),
+            ["/local/videos", "D:/shared/videos"]
+        )
     
     def test_format_size_bytes(self):
         """Test formatting bytes."""
