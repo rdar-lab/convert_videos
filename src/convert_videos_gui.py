@@ -379,7 +379,7 @@ class VideoConverterGUI:
             self.duplicates_tab, text="Scan Settings", padding=10)
         dir_frame.pack(fill='x', padx=10, pady=5)
 
-        ttk.Label(dir_frame, text="Directory to Scan:").grid(
+        ttk.Label(dir_frame, text="Directories to Scan:").grid(
             row=0, column=0, sticky='w', pady=5)
         self.dup_dir_entry = ttk.Entry(dir_frame, width=50)
         self.dup_dir_entry.grid(row=0, column=1, padx=5, pady=5)
@@ -473,8 +473,12 @@ class VideoConverterGUI:
             directory = filedialog.askdirectory(
                 initialdir=self.dup_dir_entry.get())
             if directory:
+                existing = self.dup_dir_entry.get().strip()
+                directories = [item.strip() for item in existing.replace('\n', ';').split(';') if item.strip()]
+                if directory not in directories:
+                    directories.append(directory)
                 self.dup_dir_entry.delete(0, tk.END)
-                self.dup_dir_entry.insert(0, directory)
+                self.dup_dir_entry.insert(0, '; '.join(directories))
         except Exception as e:
             logger.error(f"Browse directory error: {repr(e)}")
             messagebox.showerror(
@@ -1235,10 +1239,20 @@ class VideoConverterGUI:
 
     def scan_for_duplicates(self):
         """Scan directory for duplicate videos."""
-        directory = self.dup_dir_entry.get().strip()
-        if not directory or not os.path.isdir(directory):
+        directory_text = self.dup_dir_entry.get().strip()
+        directories = [
+            item.strip()
+            for item in directory_text.replace('\n', ';').split(';')
+            if item.strip()
+        ]
+        if not directories:
             messagebox.showerror("Invalid Directory",
-                                 "Please select a valid directory to scan")
+                                 "Please select at least one valid directory to scan")
+            return
+        invalid_directories = [item for item in directories if not os.path.isdir(item)]
+        if invalid_directories:
+            messagebox.showerror("Invalid Directory",
+                                 "Please select valid directories to scan")
             return
 
         try:
@@ -1276,7 +1290,7 @@ class VideoConverterGUI:
 
                 # Run duplicate detection
                 duplicate_groups = duplicate_detector.scan_for_duplicates(
-                    directory=directory,
+                    directory=directories,
                     max_distance=max_distance,
                     ffmpeg_path=ffmpeg_path,
                     ffprobe_path=ffprobe_path,

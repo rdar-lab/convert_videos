@@ -52,6 +52,28 @@ def hamming_distance(hash1, hash2):
         return MAX_HAMMING_DISTANCE_ERROR  # Return large distance on error
 
 
+def normalize_directories(directory):
+    """Normalize one or more directory paths into a de-duplicated list."""
+    if isinstance(directory, (str, os.PathLike)):
+        directories = [directory]
+    else:
+        directories = list(directory)
+
+    normalized = []
+    seen = set()
+    for item in directories:
+        if item is None:
+            continue
+        path = Path(str(item).strip()).expanduser()
+        if not str(path):
+            continue
+        absolute_path = str(path.resolve())
+        if absolute_path not in seen:
+            seen.add(absolute_path)
+            normalized.append(absolute_path)
+    return normalized
+
+
 def create_comparison_thumbnail(thumbnail_paths, output_dir=None):
     """Create a side-by-side comparison thumbnail from two images.
     
@@ -97,10 +119,10 @@ def create_comparison_thumbnail(thumbnail_paths, output_dir=None):
 
 
 def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, progress_callback=None, thumbnails_dir=None):
-    """Scan directory for duplicate videos.
+    """Scan one or more directories for duplicate videos.
     
     Args:
-        directory: Path to directory to scan
+        directory: Path or iterable of paths to directories to scan
         max_distance: Maximum hamming distance for duplicates
         ffmpeg_path: Path to ffmpeg executable
         ffprobe_path: Path to ffprobe executable
@@ -120,10 +142,14 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
     if progress_callback:
         progress_callback('Finding video files...')
     
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            if file.lower().endswith(video_extensions):
-                video_files.append(Path(root) / file)
+    directories = normalize_directories(directory)
+    for scan_directory in directories:
+        for root, dirs, files in os.walk(scan_directory):
+            for file in files:
+                if file.lower().endswith(video_extensions):
+                    video_path = (Path(root) / file).resolve()
+                    if video_path not in video_files:
+                        video_files.append(video_path)
     
     if not video_files:
         raise Exception('No video files found in directory')
@@ -250,8 +276,8 @@ Examples:
   python duplicate_detector.py /path/to/videos
         """
     )
-    parser.add_argument('directory',
-                        help='Directory to scan for duplicates')
+    parser.add_argument('directory', nargs='+',
+                        help='One or more directories to scan for duplicates')
     parser.add_argument('--distance',
                         type=int,
                         help='Max hamming distance (default 5)')
@@ -321,4 +347,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

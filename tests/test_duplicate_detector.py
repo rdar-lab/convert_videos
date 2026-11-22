@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 
 from duplicate_detector import (
     DuplicateResult, hamming_distance, create_comparison_thumbnail,
-    scan_for_duplicates, MAX_HAMMING_DISTANCE_ERROR, main
+    scan_for_duplicates, MAX_HAMMING_DISTANCE_ERROR, normalize_directories, main
 )
 from PIL import Image
 
@@ -139,6 +139,35 @@ class TestComparisonThumbnail(unittest.TestCase):
 
 class TestScanForDuplicates(unittest.TestCase):
     """Test finding duplicate videos."""
+
+    def test_normalize_multiple_directories(self):
+        """Test normalization accepts lists and removes duplicate directories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            directories = normalize_directories([tmpdir, tmpdir])
+            self.assertEqual(directories, [os.path.realpath(tmpdir)])
+
+    @patch('duplicate_detector.run_command')
+    @patch('duplicate_detector.os.walk')
+    def test_scan_multiple_directories(self, mock_walk, mock_run):
+        """Test video discovery across multiple directories."""
+        with tempfile.TemporaryDirectory() as dir1, tempfile.TemporaryDirectory() as dir2:
+            mock_walk.side_effect = [
+                [(dir1, [], ['video1.mp4'])],
+                [(dir2, [], ['video2.mp4'])],
+            ]
+
+            failed_result = MagicMock()
+            failed_result.returncode = 1
+            failed_result.stdout = ''
+            mock_run.return_value = failed_result
+
+            with self.assertRaises(Exception) as context:
+                scan_for_duplicates([dir1, dir2], max_distance=5,
+                                    ffmpeg_path='/usr/bin/ffmpeg',
+                                    ffprobe_path='/usr/bin/ffprobe')
+
+            self.assertIn('No videos could be processed', str(context.exception))
+            self.assertEqual(mock_walk.call_count, 2)
     
     @patch('duplicate_detector.run_command')
     @patch('duplicate_detector.imagehash.average_hash')
@@ -264,6 +293,31 @@ class TestScanForDuplicates(unittest.TestCase):
 
 class TestDuplicateDetectorCLI(unittest.TestCase):
     """Test CLI functionality."""
+
+    @patch('duplicate_detector.scan_for_duplicates')
+    @patch('duplicate_detector.dependencies_utils.validate_dependencies')
+    @patch('duplicate_detector.dependencies_utils.get_dependencies_path')
+    @patch('duplicate_detector.logging_utils.setup_logging')
+    def test_main_accepts_multiple_directories(self, mock_logging, mock_get_deps,
+                                               mock_validate, mock_scan):
+        """Test CLI passes all positional directories to the scanner."""
+        mock_get_deps.return_value = {
+            'handbrake': '/usr/bin/HandBrakeCLI',
+            'ffprobe': '/usr/bin/ffprobe',
+            'ffmpeg': '/usr/bin/ffmpeg'
+        }
+        mock_validate.return_value = True
+        mock_scan.return_value = []
+
+        with tempfile.TemporaryDirectory() as dir1, tempfile.TemporaryDirectory() as dir2:
+            test_args = ['duplicate_detector.py', dir1, dir2]
+            with patch.object(sys, 'argv', test_args):
+                with self.assertRaises(SystemExit) as cm:
+                    main()
+                self.assertEqual(cm.exception.code, 0)
+
+        call_args = mock_scan.call_args
+        self.assertEqual(call_args[0][0], [dir1, dir2])
     
     @patch('duplicate_detector.scan_for_duplicates')
     @patch('duplicate_detector.dependencies_utils.validate_dependencies')
