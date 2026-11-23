@@ -130,6 +130,12 @@ class TestVideoConverterGUIHelpers(unittest.TestCase):
     def test_format_size_terabytes(self):
         """Test formatting terabytes."""
         self.assertEqual(VideoConverterGUI.format_size(1024 ** 4), "1.00 TB")
+
+    def test_format_duration(self):
+        """Test formatting movie durations."""
+        self.assertEqual(VideoConverterGUI.format_duration(65), "01:05")
+        self.assertEqual(VideoConverterGUI.format_duration(3665), "1:01:05")
+        self.assertEqual(VideoConverterGUI.format_duration(None), "Unknown")
         self.assertEqual(VideoConverterGUI.format_size(int(1.5 * 1024 ** 4)), "1.50 TB")
 
 

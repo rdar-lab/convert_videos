@@ -55,6 +55,19 @@ class TestDuplicateResult(unittest.TestCase):
         self.assertEqual(result.file_thumbnails, {})
         self.assertIsNone(result.comparison_thumbnail)
 
+    def test_duplicate_result_metadata(self):
+        """Test file size and duration metadata."""
+        files = ["/path/to/video1.mp4", "/path/to/video2.mp4"]
+        result = DuplicateResult(
+            hash_value="metadata",
+            files=files,
+            hamming_distance=1,
+            file_sizes={"/path/to/video1.mp4": 1000, "/path/to/video2.mp4": 2000},
+            file_durations={"/path/to/video1.mp4": 65.0, "/path/to/video2.mp4": 66.0}
+        )
+        self.assertEqual(result.file_sizes[files[0]], 1000)
+        self.assertEqual(result.file_durations[files[1]], 66.0)
+
 
 class TestHammingDistance(unittest.TestCase):
     """Test hamming distance calculation."""
