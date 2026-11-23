@@ -53,6 +53,15 @@ def resolve_duplicate_file_path(files, tree_item, file_name):
     return None
 
 
+def grid_treeview_with_scrollbars(tree_frame, tree, vertical_scrollbar, horizontal_scrollbar):
+    """Place a treeview and both scrollbars in a resizeable grid."""
+    tree_frame.grid_rowconfigure(0, weight=1)
+    tree_frame.grid_columnconfigure(0, weight=1)
+    tree.grid(row=0, column=0, sticky='nsew')
+    vertical_scrollbar.grid(row=0, column=1, sticky='ns')
+    horizontal_scrollbar.grid(row=1, column=0, sticky='ew')
+
+
 class ConversionResult:
     """Represents the result of a video conversion."""
 
@@ -382,10 +391,9 @@ class VideoConverterGUI:
         self.results_tree.column('Space Saved', width=150, minwidth=120)
         self.results_tree.column('Error', width=200, minwidth=150)
 
-        # Pack
-        self.results_tree.pack(side='left', fill='both', expand=True)
-        tree_scroll_y.pack(side='right', fill='y')
-        tree_scroll_x.pack(side='bottom', fill='x')
+        # Grid
+        grid_treeview_with_scrollbars(
+            tree_frame, self.results_tree, tree_scroll_y, tree_scroll_x)
 
         # Summary label
         self.summary_label = ttk.Label(
@@ -479,10 +487,9 @@ class VideoConverterGUI:
         self.duplicates_tree.column('Length', width=100, minwidth=80)
         self.duplicates_tree.column('Thumbnail', width=300, minwidth=200)
 
-        # Pack
-        self.duplicates_tree.pack(side='left', fill='both', expand=True)
-        tree_scroll_y.pack(side='right', fill='y')
-        tree_scroll_x.pack(side='bottom', fill='x')
+        # Grid
+        grid_treeview_with_scrollbars(
+            tree_frame, self.duplicates_tree, tree_scroll_y, tree_scroll_x)
 
         # Bind mouse events for thumbnail tooltips
         self.duplicates_tree.bind('<Motion>', self.show_thumbnail_tooltip)

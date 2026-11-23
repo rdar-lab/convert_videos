@@ -4,12 +4,13 @@ Unit tests for convert_videos_gui.py
 """
 
 import unittest
+from unittest.mock import Mock
 
 # Import the GUI module (but don't run GUI components)
 try:
     from convert_videos_gui import (
         ConversionResult, VideoConverterGUI, parse_duplicate_directories,
-        resolve_duplicate_file_path
+        resolve_duplicate_file_path, grid_treeview_with_scrollbars
     )
     GUI_AVAILABLE = True
 except ImportError:
@@ -72,6 +73,27 @@ class TestConversionResult(unittest.TestCase):
 @unittest.skipIf(not GUI_AVAILABLE, "GUI module not available (tkinter missing)")
 class TestVideoConverterGUIHelpers(unittest.TestCase):
     """Test VideoConverterGUI helper methods."""
+
+    def test_grid_treeview_places_horizontal_scrollbar_below_table(self):
+        """Treeview and scrollbars share a resizeable grid layout."""
+        tree_frame = Mock()
+        tree = Mock()
+        vertical_scrollbar = Mock()
+        horizontal_scrollbar = Mock()
+
+        grid_treeview_with_scrollbars(
+            tree_frame, tree, vertical_scrollbar, horizontal_scrollbar
+        )
+
+        tree_frame.grid_rowconfigure.assert_called_once_with(0, weight=1)
+        tree_frame.grid_columnconfigure.assert_called_once_with(0, weight=1)
+        tree.grid.assert_called_once_with(row=0, column=0, sticky='nsew')
+        vertical_scrollbar.grid.assert_called_once_with(
+            row=0, column=1, sticky='ns'
+        )
+        horizontal_scrollbar.grid.assert_called_once_with(
+            row=1, column=0, sticky='ew'
+        )
 
     def test_parse_duplicate_directories(self):
         """Test parsing multiple GUI directory selections."""
