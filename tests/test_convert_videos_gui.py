@@ -8,7 +8,8 @@ import unittest
 # Import the GUI module (but don't run GUI components)
 try:
     from convert_videos_gui import (
-        ConversionResult, VideoConverterGUI, parse_duplicate_directories
+        ConversionResult, VideoConverterGUI, parse_duplicate_directories,
+        resolve_duplicate_file_path
     )
     GUI_AVAILABLE = True
 except ImportError:
@@ -78,7 +79,30 @@ class TestVideoConverterGUIHelpers(unittest.TestCase):
             parse_duplicate_directories("/local/videos; D:/shared/videos"),
             ["/local/videos", "D:/shared/videos"]
         )
-    
+
+    def test_resolve_duplicate_file_path_with_same_filename(self):
+        """Test same filenames in different directories resolve exactly."""
+        files = [
+            "/local/videos/movie.mp4",
+            "/shared/videos/movie.mp4"
+        ]
+        self.assertEqual(
+            resolve_duplicate_file_path(
+                files, "/shared/videos/movie.mp4", "movie.mp4"
+            ),
+            "/shared/videos/movie.mp4"
+        )
+
+    def test_resolve_duplicate_file_path_rejects_ambiguous_fallback(self):
+        """Test basename fallback does not choose one of same-name files."""
+        files = [
+            "/local/videos/movie.mp4",
+            "/shared/videos/movie.mp4"
+        ]
+        self.assertIsNone(
+            resolve_duplicate_file_path(files, "unknown-row", "movie.mp4")
+        )
+
     def test_format_size_bytes(self):
         """Test formatting bytes."""
         self.assertEqual(VideoConverterGUI.format_size(0), "0 B")
@@ -106,6 +130,12 @@ class TestVideoConverterGUIHelpers(unittest.TestCase):
     def test_format_size_terabytes(self):
         """Test formatting terabytes."""
         self.assertEqual(VideoConverterGUI.format_size(1024 ** 4), "1.00 TB")
+
+    def test_format_duration(self):
+        """Test formatting movie durations."""
+        self.assertEqual(VideoConverterGUI.format_duration(65), "01:05")
+        self.assertEqual(VideoConverterGUI.format_duration(3665), "1:01:05")
+        self.assertEqual(VideoConverterGUI.format_duration(None), "Unknown")
         self.assertEqual(VideoConverterGUI.format_size(int(1.5 * 1024 ** 4)), "1.50 TB")
 
 

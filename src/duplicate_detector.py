@@ -28,12 +28,15 @@ MAX_HAMMING_DISTANCE_ERROR = 999  # Return value when hamming distance calculati
 
 class DuplicateResult:
     """Represents a group of duplicate videos."""
-    def __init__(self, hash_value, files, hamming_distance, file_thumbnails=None, comparison_thumbnail=None):
+    def __init__(self, hash_value, files, hamming_distance, file_thumbnails=None,
+                 comparison_thumbnail=None, file_sizes=None, file_durations=None):
         self.hash_value = hash_value
         self.files = files  # List of file paths
         self.hamming_distance = hamming_distance  # Max distance within the group
         self.file_thumbnails = file_thumbnails or {}  # Dict mapping file path to thumbnail path
         self.comparison_thumbnail = comparison_thumbnail  # Path to side-by-side comparison thumbnail
+        self.file_sizes = file_sizes or {}  # Dict mapping file path to size in bytes
+        self.file_durations = file_durations or {}  # Dict mapping file path to duration in seconds
 
 
 def hamming_distance(hash1, hash2):
@@ -193,7 +196,7 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
             if os.path.exists(temp_frame_path) and os.path.getsize(temp_frame_path) > 0:
                 img = Image.open(temp_frame_path)
                 hash_value = imagehash.phash(img)
-                video_hashes.append((str(hash_value), video_file, str(temp_frame_path)))
+                video_hashes.append((str(hash_value), video_file, str(temp_frame_path), duration))
             else:
                 logger.warning(f"Failed to extract frame from {video_file}")
                 if os.path.exists(temp_frame_path):
@@ -218,15 +221,16 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
     duplicate_groups = []
     processed_files = set()
     
-    for i, (h1, f1, thumb1) in enumerate(video_hashes):
+    for i, (h1, f1, thumb1, duration1) in enumerate(video_hashes):
         if f1 in processed_files:
             continue
         
         group_files = [f1]
         group_thumbs = [thumb1]
+        group_durations = [duration1]
         max_dist_in_group = 0
         
-        for h2, f2, thumb2 in video_hashes[i+1:]:
+        for h2, f2, thumb2, duration2 in video_hashes[i+1:]:
             if f2 in processed_files:
                 continue
             
@@ -235,6 +239,7 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
             if dist <= max_distance:
                 group_files.append(f2)
                 group_thumbs.append(thumb2)
+                group_durations.append(duration2)
                 max_dist_in_group = max(max_dist_in_group, dist)
                 processed_files.add(f2)
         
@@ -243,6 +248,15 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
             file_thumbnails = {}
             for file, thumb in zip(group_files, group_thumbs):
                 file_thumbnails[str(file)] = thumb
+
+            file_sizes = {}
+            file_durations = {}
+            for file, duration in zip(group_files, group_durations):
+                try:
+                    file_sizes[str(file)] = os.path.getsize(file)
+                except OSError:
+                    file_sizes[str(file)] = None
+                file_durations[str(file)] = duration
             
             # Create combined thumbnail if multiple files
             comparison_thumbnail = None
@@ -257,7 +271,9 @@ def scan_for_duplicates(directory, max_distance, ffmpeg_path, ffprobe_path, prog
                 files=group_files,
                 hamming_distance=max_dist_in_group,
                 file_thumbnails=file_thumbnails,
-                comparison_thumbnail=comparison_thumbnail
+                comparison_thumbnail=comparison_thumbnail,
+                file_sizes=file_sizes,
+                file_durations=file_durations
             ))
             processed_files.add(f1)
     

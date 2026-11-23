@@ -38,6 +38,21 @@ def parse_duplicate_directories(directory_text):
     ]
 
 
+def resolve_duplicate_file_path(files, tree_item, file_name):
+    """Resolve a duplicate row to the exact file path it represents."""
+    for file_path in files:
+        if str(file_path) == str(tree_item):
+            return str(file_path)
+
+    matching_paths = [
+        str(file_path) for file_path in files
+        if Path(str(file_path)).name == file_name
+    ]
+    if len(matching_paths) == 1:
+        return matching_paths[0]
+    return None
+
+
 class ConversionResult:
     """Represents the result of a video conversion."""
 
@@ -441,7 +456,7 @@ class VideoConverterGUI:
         tree_scroll_x = ttk.Scrollbar(tree_frame, orient='horizontal')
 
         # Create treeview
-        columns = ('Distance', 'Files', 'Thumbnail')
+        columns = ('Distance', 'Files', 'Size', 'Length', 'Thumbnail')
         self.duplicates_tree = ttk.Treeview(tree_frame, columns=columns, show='tree headings',
                                             yscrollcommand=tree_scroll_y.set,
                                             xscrollcommand=tree_scroll_x.set)
@@ -453,11 +468,15 @@ class VideoConverterGUI:
         self.duplicates_tree.heading('#0', text='Group / File')
         self.duplicates_tree.heading('Distance', text='Hamming Distance')
         self.duplicates_tree.heading('Files', text='File Count')
+        self.duplicates_tree.heading('Size', text='File Size')
+        self.duplicates_tree.heading('Length', text='Movie Length')
         self.duplicates_tree.heading('Thumbnail', text='Thumbnail Path')
 
         self.duplicates_tree.column('#0', width=200, minwidth=150)
         self.duplicates_tree.column('Distance', width=120, minwidth=100)
         self.duplicates_tree.column('Files', width=100, minwidth=80)
+        self.duplicates_tree.column('Size', width=100, minwidth=80)
+        self.duplicates_tree.column('Length', width=100, minwidth=80)
         self.duplicates_tree.column('Thumbnail', width=300, minwidth=200)
 
         # Pack
@@ -1168,16 +1187,26 @@ class VideoConverterGUI:
                         group_thumb = group.comparison_thumbnail if group.comparison_thumbnail else ''
                         group_id = self.duplicates_tree.insert('', 'end',
                                                                text=f'Group {i+1}',
-                                                               values=(group.hamming_distance, len(group.files), group_thumb))
+                                                               values=(group.hamming_distance, len(group.files), '', '', group_thumb))
 
                         # Add files as children with their individual thumbnail paths
                         for file_path in group.files:
-                            file_name = str(Path(file_path).name)
+                            full_path = str(file_path)
                             thumbnail_path = group.file_thumbnails.get(
-                                str(file_path), '')
+                                full_path, '')
+                            file_size = getattr(group, 'file_sizes', {}).get(full_path)
+                            if file_size is None:
+                                try:
+                                    file_size = os.path.getsize(full_path)
+                                except OSError:
+                                    file_size = None
+                            size_text = self.format_size(file_size) if file_size is not None else 'Unknown'
+                            duration = getattr(group, 'file_durations', {}).get(full_path)
+                            length_text = self.format_duration(duration) if duration is not None else 'Unknown'
                             self.duplicates_tree.insert(group_id, 'end',
-                                                        text=file_name,
-                                                        values=('', '', thumbnail_path))
+                                                        iid=full_path,
+                                                        text=full_path,
+                                                        values=('', '', size_text, length_text, thumbnail_path))
 
                     self.dup_progress_bar.stop()
                     self.dup_status_label.config(
@@ -1378,17 +1407,17 @@ class VideoConverterGUI:
             item = self.duplicates_tree.identify_row(event.y)
             column = self.duplicates_tree.identify_column(event.x)
 
-            if not item or column != '#3':  # Only show for Thumbnail column
+            if not item or column != '#5':  # Only show for Thumbnail column
                 self.hide_thumbnail_tooltip(None)
                 return
 
             # Get the thumbnail path from the cell
             values = self.duplicates_tree.item(item, 'values')
-            if not values or len(values) < 3 or not values[2]:
+            if not values or len(values) < 5 or not values[4]:
                 self.hide_thumbnail_tooltip(None)
                 return
 
-            thumbnail_path = values[2]
+            thumbnail_path = values[4]
 
             # Check if file exists
             if not os.path.exists(thumbnail_path):
@@ -1473,10 +1502,7 @@ class VideoConverterGUI:
                 return
 
             group = self.duplicate_results[group_index]
-            for fpath in group.files:
-                if Path(fpath).name == file_name:
-                    file_path = fpath
-                    break
+            file_path = resolve_duplicate_file_path(group.files, item, file_name)
 
             if not file_path:
                 return
@@ -1549,7 +1575,7 @@ class VideoConverterGUI:
                     values = self.duplicates_tree.item(parent, 'values')
                     if values:
                         self.duplicates_tree.item(parent, values=(
-                            values[0], file_count, values[2]))
+                                values[0], file_count, '', '', values[4]))
 
                     # If only one file left in group, it's not a duplicate anymore
                     if file_count <= 1:
@@ -1652,6 +1678,22 @@ class VideoConverterGUI:
             logger.error(f"Error opening folder: {repr(e)}")
             messagebox.showerror("Browse Error",
                                  f"Failed to open folder:\n{file_path}\n\nError: {repr(e)}")
+
+    @staticmethod
+    def format_duration(duration_seconds):
+        """Format a duration in seconds as H:MM:SS or MM:SS."""
+        if duration_seconds is None:
+            return "Unknown"
+        try:
+            total_seconds = max(0, int(float(duration_seconds)))
+        except (TypeError, ValueError):
+            return "Unknown"
+
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours:
+            return f"{hours}:{minutes:02d}:{seconds:02d}"
+        return f"{minutes:02d}:{seconds:02d}"
 
     @staticmethod
     def format_size(size_bytes):
